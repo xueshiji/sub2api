@@ -174,13 +174,17 @@
                   'inline-block rounded-full px-2 py-0.5 text-xs font-medium',
                   row.subscription_type === 'subscription'
                     ? 'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400'
-                    : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300',
+                    : row.subscription_type === 'subscription_token'
+                      ? 'bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400'
+                      : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300',
                 ]"
               >
                 {{
                   row.subscription_type === "subscription"
                     ? t("admin.groups.subscription.subscription")
-                    : t("admin.groups.subscription.standard")
+                    : row.subscription_type === "subscription_token"
+                      ? t("admin.groups.subscription.subscriptionToken")
+                      : t("admin.groups.subscription.standard")
                 }}
               </span>
               <!-- Subscription Limits - compact single line -->
@@ -257,6 +261,52 @@
                     }}</span
                   >
                 </div>
+              </div>
+              <!-- Subscription Token Limits -->
+              <div
+                v-else-if="row.subscription_type === 'subscription_token'"
+                class="space-y-0.5 text-xs text-gray-500 dark:text-gray-400"
+              >
+                <div
+                  v-if="
+                    row.daily_limit_tokens ||
+                    row.weekly_limit_tokens ||
+                    row.monthly_limit_tokens
+                  "
+                  class="flex flex-wrap items-center gap-x-1 gap-y-0.5"
+                >
+                  <span v-if="row.daily_limit_tokens" class="whitespace-nowrap"
+                    >{{ formatTokens(row.daily_limit_tokens) }}/{{
+                      t("admin.groups.limitDay")
+                    }}</span
+                  >
+                  <span
+                    v-if="
+                      row.daily_limit_tokens &&
+                      (row.weekly_limit_tokens || row.monthly_limit_tokens)
+                    "
+                    class="mx-1 text-gray-300 dark:text-gray-600"
+                    >·</span
+                  >
+                  <span v-if="row.weekly_limit_tokens" class="whitespace-nowrap"
+                    >{{ formatTokens(row.weekly_limit_tokens) }}/{{
+                      t("admin.groups.limitWeek")
+                    }}</span
+                  >
+                  <span
+                    v-if="row.weekly_limit_tokens && row.monthly_limit_tokens"
+                    class="mx-1 text-gray-300 dark:text-gray-600"
+                    >·</span
+                  >
+                  <span v-if="row.monthly_limit_tokens" class="whitespace-nowrap"
+                    >{{ formatTokens(row.monthly_limit_tokens) }}/{{
+                      t("admin.groups.limitMonth")
+                    }}</span
+                  >
+                </div>
+                <span v-else class="text-gray-400 dark:text-gray-500">{{
+                  t("admin.groups.subscription.noLimit")
+                }}</span>
               </div>
             </div>
           </template>
@@ -648,7 +698,7 @@
           v-model:mappings="createForm.reasoning_effort_mappings"
         />
         <div
-          v-if="createForm.subscription_type !== 'subscription'"
+          v-if="createForm.subscription_type !== 'subscription' && createForm.subscription_type !== 'subscription_token'"
           data-tour="group-form-exclusive"
         >
           <div class="mb-1.5 flex items-center gap-1">
@@ -760,6 +810,52 @@
                 v-model.number="createForm.monthly_limit_usd"
                 type="number"
                 step="0.01"
+                min="0"
+                class="input"
+                :placeholder="t('admin.groups.subscription.noLimit')"
+              />
+            </div>
+          </div>
+
+          <!-- Subscription token limits (only show when subscription_token type is selected) -->
+          <div
+            v-if="createForm.subscription_type === 'subscription_token'"
+            class="space-y-4 border-l-2 border-primary-200 pl-4 dark:border-primary-800"
+          >
+            <div>
+              <label class="input-label">{{
+                t("admin.groups.subscription.dailyLimitTokens")
+              }}</label>
+              <input
+                v-model.number="createForm.daily_limit_tokens"
+                type="number"
+                step="1"
+                min="0"
+                class="input"
+                :placeholder="t('admin.groups.subscription.noLimit')"
+              />
+            </div>
+            <div>
+              <label class="input-label">{{
+                t("admin.groups.subscription.weeklyLimitTokens")
+              }}</label>
+              <input
+                v-model.number="createForm.weekly_limit_tokens"
+                type="number"
+                step="1"
+                min="0"
+                class="input"
+                :placeholder="t('admin.groups.subscription.noLimit')"
+              />
+            </div>
+            <div>
+              <label class="input-label">{{
+                t("admin.groups.subscription.monthlyLimitTokens")
+              }}</label>
+              <input
+                v-model.number="createForm.monthly_limit_tokens"
+                type="number"
+                step="1"
                 min="0"
                 class="input"
                 :placeholder="t('admin.groups.subscription.noLimit')"
@@ -1187,7 +1283,7 @@
         </div>
 
         <!-- 高峰时段倍率配置（仅订阅类型分组） -->
-        <div v-if="createForm.subscription_type === 'subscription'" class="border-t pt-4">
+        <div v-if="createForm.subscription_type === 'subscription' || createForm.subscription_type === 'subscription_token'" class="border-t pt-4">
           <div class="mb-4 grid grid-cols-1 gap-3 md:grid-cols-2">
             <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
               <input
@@ -1198,6 +1294,15 @@
               <span>{{ t("admin.groups.peakRate.enable") }}</span>
             </label>
           </div>
+          <p
+            v-if="createForm.subscription_type === 'subscription_token'"
+            class="mb-4 text-xs text-amber-600 dark:text-amber-400"
+          >
+            {{ t("admin.groups.peakRate.tokenQuotaNote") }}
+          </p>
+          <p v-if="createForm.peak_rate_enabled" class="mb-4 text-xs text-gray-500 dark:text-gray-400">
+            {{ t("admin.groups.peakRate.weekendNote") }}
+          </p>
           <div
             v-if="createForm.peak_rate_enabled"
             class="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3"
@@ -1906,7 +2011,8 @@
         <div
           v-if="
             ['anthropic', 'antigravity'].includes(createForm.platform) &&
-            createForm.subscription_type !== 'subscription'
+            createForm.subscription_type !== 'subscription' &&
+            createForm.subscription_type !== 'subscription_token'
           "
           class="border-t pt-4"
         >
@@ -2312,7 +2418,7 @@
           v-model:over-limit="editForm.max_reasoning_effort_over_limit"
           v-model:mappings="editForm.reasoning_effort_mappings"
         />
-        <div v-if="editForm.subscription_type !== 'subscription'">
+        <div v-if="editForm.subscription_type !== 'subscription' && editForm.subscription_type !== 'subscription_token'">
           <div class="mb-1.5 flex items-center gap-1">
             <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
               {{ t("admin.groups.form.exclusive") }}
@@ -2427,6 +2533,52 @@
                 v-model.number="editForm.monthly_limit_usd"
                 type="number"
                 step="0.01"
+                min="0"
+                class="input"
+                :placeholder="t('admin.groups.subscription.noLimit')"
+              />
+            </div>
+          </div>
+
+          <!-- Subscription token limits (only show when subscription_token type is selected) -->
+          <div
+            v-if="editForm.subscription_type === 'subscription_token'"
+            class="space-y-4 border-l-2 border-primary-200 pl-4 dark:border-primary-800"
+          >
+            <div>
+              <label class="input-label">{{
+                t("admin.groups.subscription.dailyLimitTokens")
+              }}</label>
+              <input
+                v-model.number="editForm.daily_limit_tokens"
+                type="number"
+                step="1"
+                min="0"
+                class="input"
+                :placeholder="t('admin.groups.subscription.noLimit')"
+              />
+            </div>
+            <div>
+              <label class="input-label">{{
+                t("admin.groups.subscription.weeklyLimitTokens")
+              }}</label>
+              <input
+                v-model.number="editForm.weekly_limit_tokens"
+                type="number"
+                step="1"
+                min="0"
+                class="input"
+                :placeholder="t('admin.groups.subscription.noLimit')"
+              />
+            </div>
+            <div>
+              <label class="input-label">{{
+                t("admin.groups.subscription.monthlyLimitTokens")
+              }}</label>
+              <input
+                v-model.number="editForm.monthly_limit_tokens"
+                type="number"
+                step="1"
                 min="0"
                 class="input"
                 :placeholder="t('admin.groups.subscription.noLimit')"
@@ -2854,7 +3006,7 @@
         </div>
 
         <!-- 高峰时段倍率配置（仅订阅类型分组） -->
-        <div v-if="editForm.subscription_type === 'subscription'" class="border-t pt-4">
+        <div v-if="editForm.subscription_type === 'subscription' || editForm.subscription_type === 'subscription_token'" class="border-t pt-4">
           <div class="mb-4 grid grid-cols-1 gap-3 md:grid-cols-2">
             <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
               <input
@@ -2865,6 +3017,15 @@
               <span>{{ t("admin.groups.peakRate.enable") }}</span>
             </label>
           </div>
+          <p
+            v-if="editForm.subscription_type === 'subscription_token'"
+            class="mb-4 text-xs text-amber-600 dark:text-amber-400"
+          >
+            {{ t("admin.groups.peakRate.tokenQuotaNote") }}
+          </p>
+          <p v-if="editForm.peak_rate_enabled" class="mb-4 text-xs text-gray-500 dark:text-gray-400">
+            {{ t("admin.groups.peakRate.weekendNote") }}
+          </p>
           <div
             v-if="editForm.peak_rate_enabled"
             class="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3"
@@ -3582,7 +3743,8 @@
         <div
           v-if="
             ['anthropic', 'antigravity'].includes(editForm.platform) &&
-            editForm.subscription_type !== 'subscription'
+            editForm.subscription_type !== 'subscription' &&
+            editForm.subscription_type !== 'subscription_token'
           "
           class="border-t pt-4"
         >
@@ -4417,6 +4579,7 @@ import {
   supportsReasoningEffortPolicyPlatform,
   type ReasoningEffortMappingRow,
 } from "./groupsReasoningEffort";
+import { formatTokenCount } from "@/utils/format";
 import {
   defaultAllowImageGenerationForPlatform,
   getDefaultImagePreviewPrice,
@@ -4726,6 +4889,7 @@ const editStatusOptions = computed(() => [
 const subscriptionTypeOptions = computed(() => [
   { value: "standard", label: t("admin.groups.subscription.standard") },
   { value: "subscription", label: t("admin.groups.subscription.subscription") },
+  { value: "subscription_token", label: t("admin.groups.subscription.subscriptionToken") },
 ]);
 
 // 降级分组选项（创建时）- 仅包含 anthropic 平台且未启用 claude_code_only 的分组
@@ -4774,6 +4938,7 @@ const invalidRequestFallbackOptions = computed(() => {
       g.platform === "anthropic" &&
       g.status === "active" &&
       g.subscription_type !== "subscription" &&
+      g.subscription_type !== "subscription_token" &&
       g.fallback_group_id_on_invalid_request === null,
   );
   eligibleGroups.forEach((g) => {
@@ -4793,6 +4958,7 @@ const invalidRequestFallbackOptionsForEdit = computed(() => {
       g.platform === "anthropic" &&
       g.status === "active" &&
       g.subscription_type !== "subscription" &&
+      g.subscription_type !== "subscription_token" &&
       g.fallback_group_id_on_invalid_request === null &&
       g.id !== currentId,
   );
@@ -5009,6 +5175,9 @@ const createForm = reactive({
   daily_limit_usd: null as number | null,
   weekly_limit_usd: null as number | null,
   monthly_limit_usd: null as number | null,
+  daily_limit_tokens: null as number | null,
+  weekly_limit_tokens: null as number | null,
+  monthly_limit_tokens: null as number | null,
   long_context_pricing_enabled: true,
   force_openai_fast: false,
   force_openai_ultrafast: false,
@@ -5377,6 +5546,9 @@ const editForm = reactive({
   daily_limit_usd: null as number | null,
   weekly_limit_usd: null as number | null,
   monthly_limit_usd: null as number | null,
+  daily_limit_tokens: null as number | null,
+  weekly_limit_tokens: null as number | null,
+  monthly_limit_tokens: null as number | null,
   long_context_pricing_enabled: true,
   force_openai_fast: false,
   force_openai_ultrafast: false,
@@ -5732,6 +5904,9 @@ const formatCost = (cost: number): string => {
 const formatUsd = (cost: number | null | undefined): string =>
   `$${formatCost(cost ?? 0)}`;
 
+const formatTokens = (tokens: number | null | undefined): string =>
+  formatTokenCount(tokens);
+
 const getQuotaUsageClass = (
   used: number,
   limit: number | null | undefined,
@@ -5854,6 +6029,9 @@ const closeCreateModal = () => {
   createForm.daily_limit_usd = null;
   createForm.weekly_limit_usd = null;
   createForm.monthly_limit_usd = null;
+  createForm.daily_limit_tokens = null;
+  createForm.weekly_limit_tokens = null;
+  createForm.monthly_limit_tokens = null;
   createForm.allow_image_generation = false;
   createForm.allow_batch_image_generation = false;
   createForm.image_count_billing = false;
@@ -6020,6 +6198,15 @@ const handleCreateGroup = async () => {
       monthly_limit_usd: normalizeOptionalLimit(
         createForm.monthly_limit_usd as number | string | null,
       ),
+      daily_limit_tokens: normalizeOptionalLimit(
+        createForm.daily_limit_tokens as number | string | null,
+      ),
+      weekly_limit_tokens: normalizeOptionalLimit(
+        createForm.weekly_limit_tokens as number | string | null,
+      ),
+      monthly_limit_tokens: normalizeOptionalLimit(
+        createForm.monthly_limit_tokens as number | string | null,
+      ),
       ...(Object.keys(videoModelPrices).length > 0
         ? { video_model_prices: videoModelPrices }
         : {}),
@@ -6062,6 +6249,9 @@ const handleCreateGroup = async () => {
     requestData.daily_limit_usd = emptyToNull(requestData.daily_limit_usd);
     requestData.weekly_limit_usd = emptyToNull(requestData.weekly_limit_usd);
     requestData.monthly_limit_usd = emptyToNull(requestData.monthly_limit_usd);
+    requestData.daily_limit_tokens = emptyToNull(requestData.daily_limit_tokens);
+    requestData.weekly_limit_tokens = emptyToNull(requestData.weekly_limit_tokens);
+    requestData.monthly_limit_tokens = emptyToNull(requestData.monthly_limit_tokens);
     requestData.image_rate_multiplier = normalizeRateMultiplier(
       requestData.image_rate_multiplier,
     );
@@ -6149,6 +6339,9 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.daily_limit_usd = group.daily_limit_usd;
   editForm.weekly_limit_usd = group.weekly_limit_usd;
   editForm.monthly_limit_usd = group.monthly_limit_usd;
+  editForm.daily_limit_tokens = group.daily_limit_tokens ?? null;
+  editForm.weekly_limit_tokens = group.weekly_limit_tokens ?? null;
+  editForm.monthly_limit_tokens = group.monthly_limit_tokens ?? null;
   editForm.long_context_pricing_enabled =
     group.long_context_pricing_enabled ?? true;
   editForm.force_openai_fast = group.force_openai_fast ?? false;
@@ -6370,6 +6563,15 @@ const handleUpdateGroup = async () => {
       monthly_limit_usd: normalizeOptionalLimit(
         editForm.monthly_limit_usd as number | string | null,
       ),
+      daily_limit_tokens: normalizeOptionalLimit(
+        editForm.daily_limit_tokens as number | string | null,
+      ),
+      weekly_limit_tokens: normalizeOptionalLimit(
+        editForm.weekly_limit_tokens as number | string | null,
+      ),
+      monthly_limit_tokens: normalizeOptionalLimit(
+        editForm.monthly_limit_tokens as number | string | null,
+      ),
       video_model_prices: serializeVideoModelPrices(
         editForm.video_model_prices,
       ),
@@ -6425,6 +6627,9 @@ const handleUpdateGroup = async () => {
     payload.daily_limit_usd = emptyToNull(payload.daily_limit_usd);
     payload.weekly_limit_usd = emptyToNull(payload.weekly_limit_usd);
     payload.monthly_limit_usd = emptyToNull(payload.monthly_limit_usd);
+    payload.daily_limit_tokens = emptyToNull(payload.daily_limit_tokens);
+    payload.weekly_limit_tokens = emptyToNull(payload.weekly_limit_tokens);
+    payload.monthly_limit_tokens = emptyToNull(payload.monthly_limit_tokens);
     payload.image_rate_multiplier = normalizeRateMultiplier(
       payload.image_rate_multiplier,
     );
@@ -6754,7 +6959,20 @@ watch(
     if (newVal === "subscription") {
       createForm.is_exclusive = true;
       createForm.fallback_group_id_on_invalid_request = null;
-    } else {
+      // 清对侧 token 限额：v-if 卸载旧输入框但 form 数据残留，全量提交会让后端
+      // validateSubscriptionLimitFields 拒绝切换或留下僵尸配置
+      createForm.daily_limit_tokens = null;
+      createForm.weekly_limit_tokens = null;
+      createForm.monthly_limit_tokens = null;
+    } else if (newVal === "subscription_token") {
+      createForm.is_exclusive = true;
+      createForm.fallback_group_id_on_invalid_request = null;
+      createForm.daily_limit_usd = null;
+      createForm.weekly_limit_usd = null;
+      createForm.monthly_limit_usd = null;
+    }
+    // 仅标准计费清空高峰配置；subscription 与 subscription_token 均保留
+    if (newVal !== "subscription" && newVal !== "subscription_token") {
       createForm.peak_rate_enabled = false;
       createForm.peak_start = "";
       createForm.peak_end = "";
@@ -6767,7 +6985,21 @@ watch(
 watch(
   () => editForm.subscription_type,
   (newVal) => {
-    if (newVal !== "subscription") {
+    // 切换订阅类型时清空对侧限额：v-if 卸载旧输入框但 form 数据残留，全量提交会让
+    // 后端 validateSubscriptionLimitFields 拒绝切换或留下僵尸配置
+    if (newVal === "subscription") {
+      editForm.fallback_group_id_on_invalid_request = null;
+      editForm.daily_limit_tokens = null;
+      editForm.weekly_limit_tokens = null;
+      editForm.monthly_limit_tokens = null;
+    } else if (newVal === "subscription_token") {
+      editForm.is_exclusive = true;
+      editForm.fallback_group_id_on_invalid_request = null;
+      editForm.daily_limit_usd = null;
+      editForm.weekly_limit_usd = null;
+      editForm.monthly_limit_usd = null;
+    }
+    if (newVal !== "subscription" && newVal !== "subscription_token") {
       editForm.peak_rate_enabled = false;
       editForm.peak_start = "";
       editForm.peak_end = "";

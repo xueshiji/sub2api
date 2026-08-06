@@ -435,10 +435,12 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		subscriptionType = SubscriptionTypeStandard
 	}
 
-	// 限额字段：nil/负数 表示"无限制"，0 表示"不允许用量"，正数表示具体限额
 	dailyLimit := normalizeLimit(input.DailyLimitUSD)
 	weeklyLimit := normalizeLimit(input.WeeklyLimitUSD)
 	monthlyLimit := normalizeLimit(input.MonthlyLimitUSD)
+	dailyTokenLimit := normalizeTokenLimit(input.DailyLimitTokens)
+	weeklyTokenLimit := normalizeTokenLimit(input.WeeklyLimitTokens)
+	monthlyTokenLimit := normalizeTokenLimit(input.MonthlyLimitTokens)
 
 	// 图片价格：负数表示清除（使用默认价格），0 保留（表示免费）
 	imagePrice1K := normalizePrice(input.ImagePrice1K)
@@ -588,6 +590,9 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		DailyLimitUSD:                   dailyLimit,
 		WeeklyLimitUSD:                  weeklyLimit,
 		MonthlyLimitUSD:                 monthlyLimit,
+		DailyLimitTokens:                dailyTokenLimit,
+		WeeklyLimitTokens:               weeklyTokenLimit,
+		MonthlyLimitTokens:              monthlyTokenLimit,
 		LongContextPricingEnabled:       input.LongContextPricingEnabled,
 		ModelPricing:                    modelPricing,
 		AllowImageGeneration:            allowImageGeneration,
@@ -692,6 +697,14 @@ func normalizeLimit(limit *float64) *float64 {
 	return limit
 }
 
+// normalizeTokenLimit 将负数转换为 nil（表示不限 token），0 保留（表示不允许用量）
+func normalizeTokenLimit(limit *int64) *int64 {
+	if limit == nil || *limit < 0 {
+		return nil
+	}
+	return limit
+}
+
 // normalizePrice 将负数转换为 nil（表示使用默认价格），0 保留（表示免费）
 func normalizePrice(price *float64) *float64 {
 	if price == nil || *price < 0 {
@@ -746,7 +759,7 @@ func (s *adminServiceImpl) validateFallbackGroupOnInvalidRequest(ctx context.Con
 	if platform != PlatformAnthropic && platform != PlatformAntigravity {
 		return fmt.Errorf("invalid request fallback only supported for anthropic or antigravity groups")
 	}
-	if subscriptionType == SubscriptionTypeSubscription {
+	if IsSubscriptionTypeLiteral(subscriptionType) {
 		return fmt.Errorf("subscription groups cannot set invalid request fallback")
 	}
 	if currentGroupID > 0 && currentGroupID == fallbackGroupID {
@@ -760,7 +773,7 @@ func (s *adminServiceImpl) validateFallbackGroupOnInvalidRequest(ctx context.Con
 	if fallbackGroup.Platform != PlatformAnthropic {
 		return fmt.Errorf("fallback group must be anthropic platform")
 	}
-	if fallbackGroup.SubscriptionType == SubscriptionTypeSubscription {
+	if fallbackGroup.IsSubscriptionType() {
 		return fmt.Errorf("fallback group cannot be subscription type")
 	}
 	if fallbackGroup.FallbackGroupIDOnInvalidRequest != nil {
@@ -827,6 +840,7 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	}
 
 	// 订阅相关字段
+	oldSubscriptionType := group.SubscriptionType
 	if input.SubscriptionType != "" {
 		group.SubscriptionType = input.SubscriptionType
 	}
@@ -839,6 +853,27 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	}
 	if input.MonthlyLimitUSD != nil {
 		group.MonthlyLimitUSD = normalizeLimit(input.MonthlyLimitUSD)
+	}
+	if input.DailyLimitTokens != nil {
+		group.DailyLimitTokens = normalizeTokenLimit(input.DailyLimitTokens)
+	}
+	if input.WeeklyLimitTokens != nil {
+		group.WeeklyLimitTokens = normalizeTokenLimit(input.WeeklyLimitTokens)
+	}
+	if input.MonthlyLimitTokens != nil {
+		group.MonthlyLimitTokens = normalizeTokenLimit(input.MonthlyLimitTokens)
+	}
+	// 维度切换时清空另一维度的限额（nil 在 groupRepo.Update 里触发 Clear*）。
+	if group.SubscriptionType != oldSubscriptionType {
+		if group.IsSubscriptionTokenType() {
+			group.DailyLimitUSD = nil
+			group.WeeklyLimitUSD = nil
+			group.MonthlyLimitUSD = nil
+		} else if group.SubscriptionType == SubscriptionTypeSubscription {
+			group.DailyLimitTokens = nil
+			group.WeeklyLimitTokens = nil
+			group.MonthlyLimitTokens = nil
+		}
 	}
 	// 图片生成计费配置：负数表示清除（使用默认价格）
 	if input.AllowImageGeneration != nil {
@@ -1091,6 +1126,20 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 
 	if err := s.groupRepo.Update(ctx, group); err != nil {
 		return nil, err
+	}
+
+	// 维度切换后清零另一维度的订阅用量。
+	if group.SubscriptionType != oldSubscriptionType {
+		switch {
+		case oldSubscriptionType == SubscriptionTypeSubscription && group.IsSubscriptionTokenType():
+			if err := s.userSubRepo.ResetUsageUSDByGroupID(ctx, id); err != nil {
+				logger.LegacyPrintf("service.admin", "reset usd usage on subscription type switch failed: group_id=%d err=%v", id, err)
+			}
+		case oldSubscriptionType == SubscriptionTypeSubscriptionToken && group.SubscriptionType == SubscriptionTypeSubscription:
+			if err := s.userSubRepo.ResetUsageTokensByGroupID(ctx, id); err != nil {
+				logger.LegacyPrintf("service.admin", "reset token usage on subscription type switch failed: group_id=%d err=%v", id, err)
+			}
+		}
 	}
 
 	if s.authCacheInvalidator != nil {

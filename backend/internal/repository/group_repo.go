@@ -106,6 +106,9 @@ func createGroupRecord(ctx context.Context, client *dbent.Client, groupIn *servi
 		SetNillableDailyLimitUsd(groupIn.DailyLimitUSD).
 		SetNillableWeeklyLimitUsd(groupIn.WeeklyLimitUSD).
 		SetNillableMonthlyLimitUsd(groupIn.MonthlyLimitUSD).
+		SetNillableDailyLimitTokens(groupIn.DailyLimitTokens).
+		SetNillableWeeklyLimitTokens(groupIn.WeeklyLimitTokens).
+		SetNillableMonthlyLimitTokens(groupIn.MonthlyLimitTokens).
 		SetAllowImageGeneration(groupIn.AllowImageGeneration).
 		SetAllowBatchImageGeneration(groupIn.AllowBatchImageGeneration).
 		SetImageCountBilling(groupIn.ImageCountBilling).
@@ -299,6 +302,9 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 		SetNillableDailyLimitUsd(groupIn.DailyLimitUSD).
 		SetNillableWeeklyLimitUsd(groupIn.WeeklyLimitUSD).
 		SetNillableMonthlyLimitUsd(groupIn.MonthlyLimitUSD).
+		SetNillableDailyLimitTokens(groupIn.DailyLimitTokens).
+		SetNillableWeeklyLimitTokens(groupIn.WeeklyLimitTokens).
+		SetNillableMonthlyLimitTokens(groupIn.MonthlyLimitTokens).
 		SetAllowImageGeneration(groupIn.AllowImageGeneration).
 		SetAllowBatchImageGeneration(groupIn.AllowBatchImageGeneration).
 		SetImageCountBilling(groupIn.ImageCountBilling).
@@ -359,6 +365,21 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 		builder = builder.SetMonthlyLimitUsd(*groupIn.MonthlyLimitUSD)
 	} else {
 		builder = builder.ClearMonthlyLimitUsd()
+	}
+	if groupIn.DailyLimitTokens != nil {
+		builder = builder.SetDailyLimitTokens(*groupIn.DailyLimitTokens)
+	} else {
+		builder = builder.ClearDailyLimitTokens()
+	}
+	if groupIn.WeeklyLimitTokens != nil {
+		builder = builder.SetWeeklyLimitTokens(*groupIn.WeeklyLimitTokens)
+	} else {
+		builder = builder.ClearWeeklyLimitTokens()
+	}
+	if groupIn.MonthlyLimitTokens != nil {
+		builder = builder.SetMonthlyLimitTokens(*groupIn.MonthlyLimitTokens)
+	} else {
+		builder = builder.ClearMonthlyLimitTokens()
 	}
 	if groupIn.ImagePrice1K != nil {
 		builder = builder.SetImagePrice1k(*groupIn.ImagePrice1K)
@@ -924,7 +945,7 @@ func (r *groupRepository) deleteCascade(ctx context.Context, id int64, requireEm
 	}
 
 	var affectedUserIDs []int64
-	if subscriptionType == service.SubscriptionTypeSubscription {
+	if service.IsSubscriptionTypeLiteral(subscriptionType) {
 		// 只查询未软删除的订阅，避免通知已取消订阅的用户
 		rows, err := exec.QueryContext(ctx, "SELECT user_id FROM user_subscriptions WHERE group_id = $1 AND deleted_at IS NULL", id)
 		if err != nil {

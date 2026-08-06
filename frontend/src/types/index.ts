@@ -548,7 +548,7 @@ export type GroupPlatform = AccountPlatform | 'composite'
 
 export type VideoModelPrices = Record<string, Record<string, number>>
 
-export type SubscriptionType = 'standard' | 'subscription'
+export type SubscriptionType = 'standard' | 'subscription' | 'subscription_token'
 
 export interface OpenAIMessagesDispatchModelConfig {
   opus_mapped_model?: string
@@ -592,6 +592,10 @@ export interface Group {
   daily_limit_usd: number | null
   weekly_limit_usd: number | null
   monthly_limit_usd: number | null
+  // 订阅（token）计费类型限额；仅 subscription_token 分组使用
+  daily_limit_tokens?: number | null
+  weekly_limit_tokens?: number | null
+  monthly_limit_tokens?: number | null
   long_context_pricing_enabled: boolean
   // 图片生成计费配置
   allow_image_generation: boolean
@@ -817,6 +821,9 @@ export interface CreateGroupRequest {
   daily_limit_usd?: number | null
   weekly_limit_usd?: number | null
   monthly_limit_usd?: number | null
+  daily_limit_tokens?: number | null
+  weekly_limit_tokens?: number | null
+  monthly_limit_tokens?: number | null
   long_context_pricing_enabled?: boolean
   force_openai_fast?: boolean
   force_openai_ultrafast?: boolean
@@ -886,6 +893,9 @@ export interface UpdateGroupRequest {
   daily_limit_usd?: number | null
   weekly_limit_usd?: number | null
   monthly_limit_usd?: number | null
+  daily_limit_tokens?: number | null
+  weekly_limit_tokens?: number | null
+  monthly_limit_tokens?: number | null
   long_context_pricing_enabled?: boolean
   force_openai_fast?: boolean
   force_openai_ultrafast?: boolean
@@ -2193,6 +2203,10 @@ export interface UserSubscription {
   daily_usage_usd: number
   weekly_usage_usd: number
   monthly_usage_usd: number
+  // 订阅（token）计费类型用量；仅 subscription_token 分组使用
+  daily_usage_tokens?: number
+  weekly_usage_tokens?: number
+  monthly_usage_tokens?: number
   daily_window_start: string | null
   weekly_window_start: string | null
   monthly_window_start: string | null

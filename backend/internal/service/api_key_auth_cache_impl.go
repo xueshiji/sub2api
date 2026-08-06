@@ -14,7 +14,7 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-const apiKeyAuthSnapshotVersion = 28 // v28: group force_openai_ultrafast (OpenAI gateway reads it from ctx)
+const apiKeyAuthSnapshotVersion = 29 // v29: group token limit fields; v28: group force_openai_ultrafast (OpenAI gateway reads it from ctx)
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
@@ -390,6 +390,9 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 			DailyLimitUSD:                   apiKey.Group.DailyLimitUSD,
 			WeeklyLimitUSD:                  apiKey.Group.WeeklyLimitUSD,
 			MonthlyLimitUSD:                 apiKey.Group.MonthlyLimitUSD,
+			DailyLimitTokens:                apiKey.Group.DailyLimitTokens,
+			WeeklyLimitTokens:               apiKey.Group.WeeklyLimitTokens,
+			MonthlyLimitTokens:              apiKey.Group.MonthlyLimitTokens,
 			AllowImageGeneration:            apiKey.Group.AllowImageGeneration,
 			AllowBatchImageGeneration:       apiKey.Group.AllowBatchImageGeneration,
 			ImageCountBilling:               apiKey.Group.ImageCountBilling,
@@ -496,6 +499,9 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 			DailyLimitUSD:                   snapshot.Group.DailyLimitUSD,
 			WeeklyLimitUSD:                  snapshot.Group.WeeklyLimitUSD,
 			MonthlyLimitUSD:                 snapshot.Group.MonthlyLimitUSD,
+			DailyLimitTokens:                snapshot.Group.DailyLimitTokens,
+			WeeklyLimitTokens:               snapshot.Group.WeeklyLimitTokens,
+			MonthlyLimitTokens:              snapshot.Group.MonthlyLimitTokens,
 			AllowImageGeneration:            snapshot.Group.AllowImageGeneration,
 			AllowBatchImageGeneration:       snapshot.Group.AllowBatchImageGeneration,
 			ImageCountBilling:               snapshot.Group.ImageCountBilling,

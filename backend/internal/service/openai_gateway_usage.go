@@ -511,19 +511,25 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		quotaPlatform = PlatformFromAPIKey(apiKey)
 	}
 
-	_, billingErr := applyUsageBilling(ctx, requestID, usageLog, &postUsageBillingParams{
-		Cost:                       cost,
-		User:                       user,
-		APIKey:                     apiKey,
-		Account:                    account,
-		Subscription:               subscription,
-		RequestPayloadHash:         resolveUsageBillingPayloadFingerprint(ctx, input.RequestPayloadHash),
-		IsSubscriptionBill:         isSubscriptionBilling && !simpleModeKeyRateLimitOnly,
-		AccountRateMultiplier:      accountRateMultiplier,
-		APIKeyService:              input.APIKeyService,
-		Platform:                   quotaPlatform,
-		SimpleModeKeyRateLimitOnly: simpleModeKeyRateLimitOnly,
-	}, s.billingDeps(), s.usageBillingRepo)
+	billingErr := func() error {
+		billingParams := &postUsageBillingParams{
+			Cost:                       cost,
+			User:                       user,
+			APIKey:                     apiKey,
+			Account:                    account,
+			Subscription:               subscription,
+			RequestPayloadHash:         resolveUsageBillingPayloadFingerprint(ctx, input.RequestPayloadHash),
+			IsSubscriptionBill:         isSubscriptionBilling && !simpleModeKeyRateLimitOnly,
+			AccountRateMultiplier:      accountRateMultiplier,
+			APIKeyService:              input.APIKeyService,
+			Platform:                   quotaPlatform,
+			SimpleModeKeyRateLimitOnly: simpleModeKeyRateLimitOnly,
+			EffectiveTokenMultiplier:   multiplier,
+		}
+		billingParams.SubscriptionTokens = computeSubscriptionTokens(usageLog, billingParams)
+		_, err := applyUsageBilling(ctx, requestID, usageLog, billingParams, s.billingDeps(), s.usageBillingRepo)
+		return err
+	}()
 
 	if billingErr != nil {
 		usageLog.ActualCost = 0

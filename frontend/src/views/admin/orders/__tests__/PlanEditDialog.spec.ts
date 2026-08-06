@@ -13,6 +13,14 @@ vi.mock('vue-i18n', () => ({
       return key
     },
   }),
+  // peak-rate.ts 经 @/i18n 在模块加载时调用 createI18n
+  createI18n: () => ({
+    global: {
+      t: (key: string) => key,
+      setLocaleMessage: () => {},
+      locale: { value: 'en' },
+    },
+  }),
 }))
 
 vi.mock('@/stores/app', () => ({

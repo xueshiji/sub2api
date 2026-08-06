@@ -4,7 +4,10 @@
  * 高峰窗口由后端按服务器全局时区判定（Group.PeakMultiplierAt），
  * 前端展示必须带上服务器时区标注（来自公共设置 server_utc_offset），
  * 避免用户按浏览器本地时间误读计费窗口。
+ * 高峰倍率仅周一至周五生效（周末不叠加），展示统一附带生效日标注。
  */
+
+import { i18n } from '@/i18n'
 
 export interface PeakRateFields {
   peak_rate_enabled?: boolean
@@ -22,12 +25,13 @@ export function serverTimezoneLabel(utcOffset?: string | null): string {
   return utcOffset ? `UTC${utcOffset}` : ''
 }
 
-/** "14:00-18:00 ×2 (UTC+08:00)"，tzLabel 为空时省略括号部分 */
+/** "14:00-18:00 ×2 周一至周五 (UTC+08:00)"，tzLabel 为空时省略括号部分 */
 export function formatPeakRateWindow(
   fields: PeakRateFields | null | undefined,
   tzLabel?: string
 ): string {
   if (!hasPeakRate(fields) || !fields) return ''
-  const base = `${fields.peak_start}-${fields.peak_end} ×${fields.peak_rate_multiplier ?? 1}`
+  const weekdays = ` ${i18n.global.t('common.peakRateWeekdaysOnly')}`
+  const base = `${fields.peak_start}-${fields.peak_end} ×${fields.peak_rate_multiplier ?? 1}${weekdays}`
   return tzLabel ? `${base} (${tzLabel})` : base
 }
