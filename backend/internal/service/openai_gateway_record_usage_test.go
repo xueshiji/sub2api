@@ -176,6 +176,16 @@ func (s *openAIRecordUsageSubRepoStub) IncrementUsage(ctx context.Context, id in
 	return s.incrementErr
 }
 
+func (s *openAIRecordUsageSubRepoStub) IncrementUsageTokens(_ context.Context, _ int64, _ int64) error {
+	return nil
+}
+func (s *openAIRecordUsageSubRepoStub) ResetUsageUSDByGroupID(_ context.Context, _ int64) error {
+	return nil
+}
+func (s *openAIRecordUsageSubRepoStub) ResetUsageTokensByGroupID(_ context.Context, _ int64) error {
+	return nil
+}
+
 type openAIRecordUsageAPIKeyQuotaStub struct {
 	quotaCalls          int
 	rateLimitCalls      int
@@ -474,8 +484,10 @@ func TestOpenAIGatewayServiceRecordUsage_PeakRateAffectsTokenModeImageOutputToke
 				PeakRateMultiplier: 3.0,
 			},
 		},
-		User:    &User{ID: 2004},
-		Account: &Account{ID: 3004},
+		// PricingAt 固定为周四时刻，避免按记录时刻回退时高峰断言随实际运行日翻转
+		User:      &User{ID: 2004},
+		Account:   &Account{ID: 3004},
+		PricingAt: time.Date(2026, time.January, 1, 0, 30, 0, 0, time.UTC),
 	})
 
 	require.NoError(t, err)

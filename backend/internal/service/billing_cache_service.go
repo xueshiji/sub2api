@@ -40,12 +40,15 @@ var (
 
 // subscriptionCacheData 订阅缓存数据结构（内部使用）
 type subscriptionCacheData struct {
-	Status       string
-	ExpiresAt    time.Time
-	DailyUsage   float64
-	WeeklyUsage  float64
-	MonthlyUsage float64
-	Version      int64
+	Status             string
+	ExpiresAt          time.Time
+	DailyUsage         float64
+	WeeklyUsage        float64
+	MonthlyUsage       float64
+	DailyUsageTokens   int64
+	WeeklyUsageTokens  int64
+	MonthlyUsageTokens int64
+	Version            int64
 }
 
 // 缓存写入任务类型
@@ -442,23 +445,29 @@ func (s *BillingCacheService) GetSubscriptionStatus(ctx context.Context, userID,
 
 func (s *BillingCacheService) convertFromPortsData(data *SubscriptionCacheData) *subscriptionCacheData {
 	return &subscriptionCacheData{
-		Status:       data.Status,
-		ExpiresAt:    data.ExpiresAt,
-		DailyUsage:   data.DailyUsage,
-		WeeklyUsage:  data.WeeklyUsage,
-		MonthlyUsage: data.MonthlyUsage,
-		Version:      data.Version,
+		Status:             data.Status,
+		ExpiresAt:          data.ExpiresAt,
+		DailyUsage:         data.DailyUsage,
+		WeeklyUsage:        data.WeeklyUsage,
+		MonthlyUsage:       data.MonthlyUsage,
+		DailyUsageTokens:   data.DailyUsageTokens,
+		WeeklyUsageTokens:  data.WeeklyUsageTokens,
+		MonthlyUsageTokens: data.MonthlyUsageTokens,
+		Version:            data.Version,
 	}
 }
 
 func (s *BillingCacheService) convertToPortsData(data *subscriptionCacheData) *SubscriptionCacheData {
 	return &SubscriptionCacheData{
-		Status:       data.Status,
-		ExpiresAt:    data.ExpiresAt,
-		DailyUsage:   data.DailyUsage,
-		WeeklyUsage:  data.WeeklyUsage,
-		MonthlyUsage: data.MonthlyUsage,
-		Version:      data.Version,
+		Status:             data.Status,
+		ExpiresAt:          data.ExpiresAt,
+		DailyUsage:         data.DailyUsage,
+		WeeklyUsage:        data.WeeklyUsage,
+		MonthlyUsage:       data.MonthlyUsage,
+		DailyUsageTokens:   data.DailyUsageTokens,
+		WeeklyUsageTokens:  data.WeeklyUsageTokens,
+		MonthlyUsageTokens: data.MonthlyUsageTokens,
+		Version:            data.Version,
 	}
 }
 
@@ -470,12 +479,15 @@ func (s *BillingCacheService) getSubscriptionFromDB(ctx context.Context, userID,
 	}
 
 	return &subscriptionCacheData{
-		Status:       sub.Status,
-		ExpiresAt:    sub.ExpiresAt,
-		DailyUsage:   sub.DailyUsageUSD,
-		WeeklyUsage:  sub.WeeklyUsageUSD,
-		MonthlyUsage: sub.MonthlyUsageUSD,
-		Version:      sub.UpdatedAt.Unix(),
+		Status:             sub.Status,
+		ExpiresAt:          sub.ExpiresAt,
+		DailyUsage:         sub.DailyUsageUSD,
+		WeeklyUsage:        sub.WeeklyUsageUSD,
+		MonthlyUsage:       sub.MonthlyUsageUSD,
+		DailyUsageTokens:   sub.DailyUsageTokens,
+		WeeklyUsageTokens:  sub.WeeklyUsageTokens,
+		MonthlyUsageTokens: sub.MonthlyUsageTokens,
+		Version:            sub.UpdatedAt.Unix(),
 	}, nil
 }
 
@@ -516,6 +528,14 @@ func (s *BillingCacheService) QueueUpdateSubscriptionUsage(userID, groupID int64
 	if err := s.UpdateSubscriptionUsage(ctx, userID, groupID, costUSD); err != nil {
 		logger.LegacyPrintf("service.billing_cache", "Warning: update subscription cache fallback failed for user %d group %d: %v", userID, groupID, err)
 	}
+}
+
+// UpdateSubscriptionUsageTokens 更新 token 型订阅用量缓存（同步调用）
+func (s *BillingCacheService) UpdateSubscriptionUsageTokens(ctx context.Context, userID, groupID int64, tokens int64) error {
+	if s.cache == nil {
+		return nil
+	}
+	return s.cache.UpdateSubscriptionUsageTokens(ctx, userID, groupID, tokens)
 }
 
 // InvalidateSubscription 失效指定订阅缓存
@@ -922,6 +942,19 @@ func (s *BillingCacheService) checkSubscriptionEligibility(ctx context.Context, 
 	}
 
 	// 检查限额（使用传入的Group限额配置）
+	if group.IsSubscriptionTokenType() {
+		if group.HasDailyTokenLimit() && subData.DailyUsageTokens >= *group.DailyLimitTokens {
+			return ErrDailyLimitExceeded
+		}
+		if group.HasWeeklyTokenLimit() && subData.WeeklyUsageTokens >= *group.WeeklyLimitTokens {
+			return ErrWeeklyLimitExceeded
+		}
+		if group.HasMonthlyTokenLimit() && subData.MonthlyUsageTokens >= *group.MonthlyLimitTokens {
+			return ErrMonthlyLimitExceeded
+		}
+		return nil
+	}
+
 	if group.HasDailyLimit() && subData.DailyUsage >= *group.DailyLimitUSD {
 		return ErrDailyLimitExceeded
 	}

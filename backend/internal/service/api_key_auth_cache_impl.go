@@ -14,7 +14,7 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-const apiKeyAuthSnapshotVersion = 20 // v20: group long-context and model pricing fields (force refresh of pre-fix snapshots)
+const apiKeyAuthSnapshotVersion = 21 // v21: group long-context/model pricing fields plus group token limit fields (force refresh of v20 snapshots missing either)
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
@@ -388,6 +388,9 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 			DailyLimitUSD:                   apiKey.Group.DailyLimitUSD,
 			WeeklyLimitUSD:                  apiKey.Group.WeeklyLimitUSD,
 			MonthlyLimitUSD:                 apiKey.Group.MonthlyLimitUSD,
+			DailyLimitTokens:                apiKey.Group.DailyLimitTokens,
+			WeeklyLimitTokens:               apiKey.Group.WeeklyLimitTokens,
+			MonthlyLimitTokens:              apiKey.Group.MonthlyLimitTokens,
 			AllowImageGeneration:            apiKey.Group.AllowImageGeneration,
 			AllowBatchImageGeneration:       apiKey.Group.AllowBatchImageGeneration,
 			ImageRateIndependent:            apiKey.Group.ImageRateIndependent,
@@ -485,6 +488,9 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 			DailyLimitUSD:                   snapshot.Group.DailyLimitUSD,
 			WeeklyLimitUSD:                  snapshot.Group.WeeklyLimitUSD,
 			MonthlyLimitUSD:                 snapshot.Group.MonthlyLimitUSD,
+			DailyLimitTokens:                snapshot.Group.DailyLimitTokens,
+			WeeklyLimitTokens:               snapshot.Group.WeeklyLimitTokens,
+			MonthlyLimitTokens:              snapshot.Group.MonthlyLimitTokens,
 			AllowImageGeneration:            snapshot.Group.AllowImageGeneration,
 			AllowBatchImageGeneration:       snapshot.Group.AllowBatchImageGeneration,
 			ImageRateIndependent:            snapshot.Group.ImageRateIndependent,

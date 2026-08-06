@@ -28,6 +28,11 @@ func at(hour, min int) time.Time {
 	return time.Date(2026, 6, 29, hour, min, 0, 0, time.UTC)
 }
 
+// atDay 的 2026-06-27 为周六、28 为周日、29 为周一。
+func atDay(day, hour, min int) time.Time {
+	return time.Date(2026, 6, day, hour, min, 0, 0, time.UTC)
+}
+
 func TestPeakMultiplierAt_DisabledOrUnconfigured(t *testing.T) {
 	cases := []struct {
 		name string
@@ -78,6 +83,27 @@ func TestPeakMultiplierAt_Boundaries(t *testing.T) {
 	}
 }
 
+func TestPeakMultiplierAt_WeekendExcluded(t *testing.T) {
+	g := newPeakGroup(true, "14:00", "18:00", 3.0)
+	cases := []struct {
+		name string
+		at   time.Time
+		want float64
+	}{
+		{"saturday in window", atDay(27, 15, 30), 1.0},
+		{"sunday in window", atDay(28, 15, 30), 1.0},
+		{"monday in window", atDay(29, 15, 30), 3.0},
+		{"saturday off window", atDay(27, 20, 0), 1.0},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := g.PeakMultiplierAt(c.at); got != c.want {
+				t.Fatalf("at %s: expect %v, got %v", c.at.Format("2006-01-02 15:04"), c.want, got)
+			}
+		})
+	}
+}
+
 func TestPeakMultiplierAt_RespectsTimezoneLocation(t *testing.T) {
 	// 全局时区为 UTC。北京 15:00 = UTC 07:00，不在 [14:00,18:00)。
 	nonUTC := time.Date(2026, 6, 29, 15, 0, 0, 0, mustLoad("Asia/Shanghai"))
@@ -107,6 +133,7 @@ func TestValidatePeakRateConfig(t *testing.T) {
 	}{
 		{"disabled passes through", "subscription", false, "", "", 0, false},
 		{"subscription enabled valid", "subscription", true, "14:00", "18:00", 3.0, false},
+		{"subscription_token enabled valid", "subscription_token", true, "14:00", "18:00", 3.0, false},
 		{"standard enabled rejected", "standard", true, "14:00", "18:00", 3.0, true},
 		{"empty type treated as standard", "", true, "14:00", "18:00", 3.0, true},
 		{"standard disabled passes", "standard", false, "", "", 0, false},
@@ -234,5 +261,34 @@ func TestPeakMultiplier_SnapshotRoundTrip(t *testing.T) {
 	}
 	if got := restored.Group.PeakMultiplierAt(at(20, 0)); got != 1.0 {
 		t.Fatalf("off-peak multiplier after round-trip: got %v, want 1.0", got)
+	}
+}
+
+func TestNormalizePeakRateConfig(t *testing.T) {
+	cases := []struct {
+		name               string
+		subType            string
+		enabled            bool
+		start, end         string
+		mult               float64
+		wantEnabled        bool
+		wantStart, wantEnd string
+		wantMult           float64
+	}{
+		{"subscription enabled keeps config", "subscription", true, "14:00", "18:00", 3.0, true, "14:00", "18:00", 3.0},
+		{"subscription_token enabled keeps config", "subscription_token", true, "14:00", "18:00", 3.0, true, "14:00", "18:00", 3.0},
+		{"standard clears config", "standard", true, "14:00", "18:00", 3.0, false, "", "", 1.0},
+		{"empty type clears config", "", true, "14:00", "18:00", 3.0, false, "", "", 1.0},
+		{"subscription disabled keeps valid window", "subscription", false, "14:00", "18:00", 1.0, false, "14:00", "18:00", 1.0},
+		{"subscription_token disabled cleans dirty window", "subscription_token", false, "99:99", "18:00", -1.0, false, "", "18:00", 1.0},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			enabled, start, end, mult := NormalizePeakRateConfig(c.subType, c.enabled, c.start, c.end, c.mult)
+			if enabled != c.wantEnabled || start != c.wantStart || end != c.wantEnd || mult != c.wantMult {
+				t.Fatalf("NormalizePeakRateConfig(%q, enabled=%v): got (%v,%q,%q,%v), want (%v,%q,%q,%v)",
+					c.subType, c.enabled, enabled, start, end, mult, c.wantEnabled, c.wantStart, c.wantEnd, c.wantMult)
+			}
+		})
 	}
 }

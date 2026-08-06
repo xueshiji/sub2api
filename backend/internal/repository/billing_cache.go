@@ -50,12 +50,15 @@ func billingSubKey(userID, groupID int64) string {
 }
 
 const (
-	subFieldStatus       = "status"
-	subFieldExpiresAt    = "expires_at"
-	subFieldDailyUsage   = "daily_usage"
-	subFieldWeeklyUsage  = "weekly_usage"
-	subFieldMonthlyUsage = "monthly_usage"
-	subFieldVersion      = "version"
+	subFieldStatus             = "status"
+	subFieldExpiresAt          = "expires_at"
+	subFieldDailyUsage         = "daily_usage"
+	subFieldWeeklyUsage        = "weekly_usage"
+	subFieldMonthlyUsage       = "monthly_usage"
+	subFieldDailyUsageTokens   = "daily_usage_tokens"
+	subFieldWeeklyUsageTokens  = "weekly_usage_tokens"
+	subFieldMonthlyUsageTokens = "monthly_usage_tokens"
+	subFieldVersion            = "version"
 )
 
 // billingRateLimitKey generates the Redis key for API key rate limit cache.
@@ -94,6 +97,44 @@ var (
 		redis.call('HINCRBYFLOAT', KEYS[1], 'weekly_usage', cost)
 		redis.call('HINCRBYFLOAT', KEYS[1], 'monthly_usage', cost)
 		redis.call('EXPIRE', KEYS[1], ARGV[2])
+		return 1
+	`)
+
+	// updateSubUsageTokensScript 原子累加三个 *_usage_tokens（HINCRBY，token 为整数）。
+	// key 不存在时也必须累加（HINCRBY 自动建 key）：窗口重置的 DEL 与 preflight 重建
+	// 之间存在间隙，丢弃间隙内增量会让重建快照固化偏低用量，token 限额失效。
+	updateSubUsageTokensScript = redis.NewScript(`
+		local tokens = tonumber(ARGV[1])
+		redis.call('HINCRBY', KEYS[1], 'daily_usage_tokens', tokens)
+		redis.call('HINCRBY', KEYS[1], 'weekly_usage_tokens', tokens)
+		redis.call('HINCRBY', KEYS[1], 'monthly_usage_tokens', tokens)
+		redis.call('EXPIRE', KEYS[1], ARGV[2])
+		return 1
+	`)
+
+	// setSubscriptionCacheScript 重建订阅缓存。token 用量字段取 max 而非覆盖：
+	// 重建快照的读取与写入之间可能有 HINCRBY 先行落账的增量，直接覆盖会固化
+	// 偏低用量；max 保证缓存不低于快照，短暂高估只会提前触发限额检查。
+	// ARGV: [1]=status [2]=expires_at [3..5]=*_usage(USD) [6]=version
+	//       [7..9]=*_usage_tokens [10]=ttl_seconds
+	setSubscriptionCacheScript = redis.NewScript(`
+		redis.call('HSET', KEYS[1],
+			'status', ARGV[1],
+			'expires_at', ARGV[2],
+			'daily_usage', ARGV[3],
+			'weekly_usage', ARGV[4],
+			'monthly_usage', ARGV[5],
+			'version', ARGV[6])
+		local function set_max(field, value)
+			local cur = redis.call('HGET', KEYS[1], field)
+			if (not cur) or (tonumber(cur) < tonumber(value)) then
+				redis.call('HSET', KEYS[1], field, value)
+			end
+		end
+		set_max('daily_usage_tokens', ARGV[7])
+		set_max('weekly_usage_tokens', ARGV[8])
+		set_max('monthly_usage_tokens', ARGV[9])
+		redis.call('EXPIRE', KEYS[1], ARGV[10])
 		return 1
 	`)
 
@@ -212,6 +253,18 @@ func (c *billingCache) parseSubscriptionCache(data map[string]string) (*service.
 		result.MonthlyUsage, _ = strconv.ParseFloat(monthlyStr, 64)
 	}
 
+	if v, ok := data[subFieldDailyUsageTokens]; ok {
+		result.DailyUsageTokens, _ = strconv.ParseInt(v, 10, 64)
+	}
+
+	if v, ok := data[subFieldWeeklyUsageTokens]; ok {
+		result.WeeklyUsageTokens, _ = strconv.ParseInt(v, 10, 64)
+	}
+
+	if v, ok := data[subFieldMonthlyUsageTokens]; ok {
+		result.MonthlyUsageTokens, _ = strconv.ParseInt(v, 10, 64)
+	}
+
 	if versionStr, ok := data[subFieldVersion]; ok {
 		result.Version, _ = strconv.ParseInt(versionStr, 10, 64)
 	}
@@ -226,20 +279,22 @@ func (c *billingCache) SetSubscriptionCache(ctx context.Context, userID, groupID
 
 	key := billingSubKey(userID, groupID)
 
-	fields := map[string]any{
-		subFieldStatus:       data.Status,
-		subFieldExpiresAt:    data.ExpiresAt.Unix(),
-		subFieldDailyUsage:   data.DailyUsage,
-		subFieldWeeklyUsage:  data.WeeklyUsage,
-		subFieldMonthlyUsage: data.MonthlyUsage,
-		subFieldVersion:      data.Version,
+	_, err := setSubscriptionCacheScript.Run(ctx, c.rdb, []string{key},
+		data.Status,
+		data.ExpiresAt.Unix(),
+		data.DailyUsage,
+		data.WeeklyUsage,
+		data.MonthlyUsage,
+		data.Version,
+		data.DailyUsageTokens,
+		data.WeeklyUsageTokens,
+		data.MonthlyUsageTokens,
+		int(jitteredTTL().Seconds()),
+	).Result()
+	if err != nil && !errors.Is(err, redis.Nil) {
+		return err
 	}
-
-	pipe := c.rdb.Pipeline()
-	pipe.HSet(ctx, key, fields)
-	pipe.Expire(ctx, key, jitteredTTL())
-	_, err := pipe.Exec(ctx)
-	return err
+	return nil
 }
 
 func (c *billingCache) UpdateSubscriptionUsage(ctx context.Context, userID, groupID int64, cost float64) error {
@@ -247,6 +302,16 @@ func (c *billingCache) UpdateSubscriptionUsage(ctx context.Context, userID, grou
 	_, err := updateSubUsageScript.Run(ctx, c.rdb, []string{key}, cost, int(jitteredTTL().Seconds())).Result()
 	if err != nil && !errors.Is(err, redis.Nil) {
 		log.Printf("Warning: update subscription usage cache failed for user %d group %d: %v", userID, groupID, err)
+		return err
+	}
+	return nil
+}
+
+func (c *billingCache) UpdateSubscriptionUsageTokens(ctx context.Context, userID, groupID int64, tokens int64) error {
+	key := billingSubKey(userID, groupID)
+	_, err := updateSubUsageTokensScript.Run(ctx, c.rdb, []string{key}, tokens, int(jitteredTTL().Seconds())).Result()
+	if err != nil && !errors.Is(err, redis.Nil) {
+		log.Printf("Warning: update subscription token usage cache failed for user %d group %d: %v", userID, groupID, err)
 		return err
 	}
 	return nil

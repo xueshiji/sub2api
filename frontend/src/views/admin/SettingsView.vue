@@ -10913,7 +10913,9 @@ async function loadSubscriptionGroups() {
     const groups = await adminAPI.groups.getAll();
     subscriptionGroups.value = groups.filter(
       (group) =>
-        group.subscription_type === "subscription" && group.status === "active",
+        (group.subscription_type === "subscription" ||
+          group.subscription_type === "subscription_token") &&
+        group.status === "active",
     );
   } catch (_error: unknown) {
     subscriptionGroups.value = [];

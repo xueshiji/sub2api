@@ -28,6 +28,7 @@
                 : t('admin.accounts.upstreamBilling.noPeakRate')
             }}
           </p>
+          <p v-if="data.peak_rate_enabled">{{ t('common.peakRateWeekdaysOnly') }}</p>
           <p>{{ t('admin.accounts.upstreamBilling.effectiveRate', { value: currentEffectiveRate ?? '-' }) }}</p>
           <p>{{ t('admin.accounts.upstreamBilling.updatedAt', { value: formatDate(snapshot?.received_at) }) }}</p>
         </template>
@@ -158,6 +159,15 @@ const minuteInTimeZone = (timestamp: number, timeZone?: string) => {
     return null
   }
 }
+const isWeekendInTimeZone = (timestamp: number, timeZone?: string) => {
+  if (!timeZone) return false
+  try {
+    const weekday = new Intl.DateTimeFormat('en-US', { timeZone, weekday: 'short' }).format(new Date(timestamp))
+    return weekday === 'Sat' || weekday === 'Sun'
+  } catch {
+    return false
+  }
+}
 const currentEffectiveRate = computed(() => {
   const billing = data.value
   if (!billing) return null
@@ -171,7 +181,9 @@ const currentEffectiveRate = computed(() => {
   const minute = minuteInTimeZone(props.now, billing.timezone)
   const peak = billing.peak_rate_multiplier
   if (start == null || end == null || minute == null || start >= end || typeof peak !== 'number' || !Number.isFinite(peak) || peak < 0) return null
-  const value = minute >= start && minute < end ? base * peak : base
+  // 高峰仅周一至周五生效，周末不叠加
+  const inPeakWindow = minute >= start && minute < end && !isWeekendInTimeZone(props.now, billing.timezone)
+  const value = inPeakWindow ? base * peak : base
   return Number.isFinite(value) ? value : null
 })
 const lastDetectedRate = computed(() => {
