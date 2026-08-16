@@ -567,6 +567,48 @@ export default {
           cost: 'Cost'
         }
       },
+      peakStats: {
+        subtitle: 'Tokens are weighted by each subscription group\'s peak-hours multiplier to gauge peak resource usage',
+        userCount: '{count} users',
+        exportHtml: 'Export HTML',
+        empty: 'No usage data for the current filters',
+        failedToLoad: 'Failed to load weighted stats',
+        kpis: {
+          totalUsers: 'Total Users',
+          totalUsersHint: 'Accounts with usage',
+          userUnit: '',
+          weightedTokens: 'Peak-Weighted Tokens',
+          weightedHint: 'Raw {original} · weight factor {ratio}x',
+          totalRequests: 'Total Requests',
+          requestUnit: '',
+          requestsHint: '{avg} avg per user',
+          heavyUsers: 'Heavy Users',
+          heavyHint: 'Weighted tokens ≥ {threshold}M'
+        },
+        charts: {
+          top15Title: 'Top 15 Users · Weighted Tokens',
+          top15Subtitle: 'Peak-weighted tokens (millions)',
+          compareTitle: 'Weighted vs Raw Tokens',
+          compareSubtitle: 'Top 10 users comparison',
+          pieTitle: 'Token Distribution',
+          pieSubtitle: 'Share of total weighted tokens per user',
+          others: 'Others'
+        },
+        table: {
+          user: 'User',
+          weighted: 'Weighted Tokens (M)',
+          original: 'Raw Tokens (M)',
+          cacheRead: 'Cache Read (M)',
+          inputTokens: 'Input (cache miss) (M)',
+          outputTokens: 'Output (M)',
+          requests: 'Requests',
+          ctxLen: 'Avg Tokens/Request',
+          share: 'Share',
+          searchPlaceholder: 'Search username / email...',
+          all: 'All',
+          heavy: 'Heavy (≥{threshold}M)'
+        }
+      },
       cleanup: {
         button: 'Cleanup',
         title: 'Cleanup Usage Records',

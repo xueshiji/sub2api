@@ -1033,7 +1033,8 @@ export default {
         peakStart: '高峰开始',
         peakEnd: '高峰结束',
         peakMultiplier: '高峰倍率',
-        multiplierHint: '作用于 token 计费倍率；token 计费的图片 token 同样适用，0 表示高峰 token 请求按 0 倍计费'
+        multiplierHint: '作用于 token 计费倍率；token 计费的图片 token 同样适用，0 表示高峰 token 请求按 0 倍计费',
+        weekendNote: '高峰倍率仅周一至周五生效，周末（周六/周日）不叠加。'
       },
       profitControl: {
         enable: '启用利润控制',

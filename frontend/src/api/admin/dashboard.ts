@@ -194,6 +194,54 @@ export async function getUserBreakdown(params: UserBreakdownParams): Promise<Use
   return data
 }
 
+export interface PeakWeightedTokenItem {
+  user_id: number
+  user_label: string
+  weighted_tokens: number
+  total_tokens: number
+  cache_read_tokens: number
+  input_tokens: number
+  output_tokens: number
+  requests: number
+  peak_input_tokens: number
+  peak_cache_read_tokens: number
+  peak_output_tokens: number
+  weighted_input_tokens: number
+  weighted_cache_read_tokens: number
+  weighted_output_tokens: number
+}
+
+export interface PeakWeightedTokenStatsParams {
+  start_date?: string
+  end_date?: string
+  group_id?: number
+  model?: string
+  model_source?: 'requested' | 'upstream' | 'mapping'
+  user_id?: number
+  api_key_id?: number
+  account_id?: number
+  request_type?: UsageRequestType
+  stream?: boolean
+  billing_type?: number | null
+}
+
+export interface PeakWeightedTokenStatsResponse {
+  users: PeakWeightedTokenItem[]
+  start_date: string
+  end_date: string
+  timezone: string
+}
+
+export async function getPeakWeightedTokenStats(
+  params: PeakWeightedTokenStatsParams
+): Promise<PeakWeightedTokenStatsResponse> {
+  const { data } = await apiClient.get<PeakWeightedTokenStatsResponse>(
+    '/admin/dashboard/peak-weighted-tokens',
+    { params }
+  )
+  return data
+}
+
 /**
  * Get dashboard snapshot v2 (aggregated response for heavy admin pages).
  */

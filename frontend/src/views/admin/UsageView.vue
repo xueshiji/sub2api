@@ -11,6 +11,7 @@
               <DateRangePicker
                 v-model:start-date="startDate"
                 v-model:end-date="endDate"
+                with-time
                 @change="onDateRangeChange"
               />
             </div>
@@ -85,7 +86,7 @@
 
         <UsageFilters v-model="filters" ref="usageFiltersRef" flat :mode="activeTab" class="border-b border-gray-100 dark:border-dark-700/50" :start-date="startDate" :end-date="endDate" :exporting="exporting" :model-options="modelNameOptions" @change="applyFilters" @refresh="refreshData" @reset="resetFilters" @cleanup="openCleanupDialog" @export="exportToExcel">
           <template #after-reset>
-            <div v-if="activeTab !== 'ranking'" class="relative" ref="columnDropdownRef">
+            <div v-if="activeTab === 'usage' || activeTab === 'errors'" class="relative" ref="columnDropdownRef">
               <button
                 @click="showColumnDropdown = !showColumnDropdown"
                 class="btn btn-secondary px-2 md:px-3"
@@ -160,6 +161,16 @@
             @select-user="handleRankingSelectUser"
           />
         </div>
+        <div v-if="statsMounted" v-show="activeTab === 'stats'" class="overflow-hidden rounded-b-2xl">
+          <PeakWeightedTokenStats
+            ref="statsRef"
+            :start-date="startDate"
+            :end-date="endDate"
+            :filters="breakdownFilters"
+            :model="filters.model"
+            :group-name="selectedGroupName"
+          />
+        </div>
       </div>
       <OpsErrorDetailModal v-model:show="showErrorModal" :error-id="selectedErrorId" :error-type="'request'" />
     </div>
@@ -194,6 +205,7 @@ import AppLayout from '@/components/layout/AppLayout.vue'; import Pagination fro
 import UsageStatsCards from '@/components/admin/usage/UsageStatsCards.vue'; import UsageFilters from '@/components/admin/usage/UsageFilters.vue'
 import UsageTable from '@/components/admin/usage/UsageTable.vue'; import UsageExportProgress from '@/components/admin/usage/UsageExportProgress.vue'
 import UserTokenRanking from '@/components/admin/usage/UserTokenRanking.vue'
+import PeakWeightedTokenStats from '@/components/admin/usage/PeakWeightedTokenStats.vue'
 import UsageCleanupDialog from '@/components/admin/usage/UsageCleanupDialog.vue'
 import UserBalanceHistoryModal from '@/components/admin/user/UserBalanceHistoryModal.vue'
 import OpsErrorLogTable from '@/views/admin/ops/components/OpsErrorLogTable.vue'
@@ -248,6 +260,10 @@ const breakdownFilters = computed(() => {
   return f
 })
 
+const selectedGroupName = computed(() =>
+  filters.value.group_id ? usageFiltersRef.value?.getGroupName(filters.value.group_id) : undefined
+)
+
 const modelNameOptions = computed(() =>
   Array.from(new Set(requestedModelStats.value.map((m) => m.model).filter(Boolean))).sort()
 )
@@ -279,19 +295,26 @@ const formatLD = (d: Date) => {
   const day = String(d.getDate()).padStart(2, '0')
   return `${year}-${month}-${day}`
 }
+// datetime-local 原生格式 YYYY-MM-DDTHH:mm
+const formatLDT = (d: Date) =>
+  `${formatLD(d)}T${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+// 时间值含 T 和冒号（冒号在 Windows 文件名非法），替换为紧凑格式
+const sanitizeRangeForFilename = (s: string | undefined) => (s ?? '').replace(/T/g, '_').replace(/:/g, '')
 const getLast24HoursRangeDates = (): { start: string; end: string } => {
   const end = new Date()
+  end.setMinutes(0, 0, 0)
   const start = new Date(end.getTime() - 24 * 60 * 60 * 1000)
   return {
-    start: formatLD(start),
-    end: formatLD(end)
+    start: formatLDT(start),
+    end: formatLDT(end)
   }
 }
+// 纯日期按 UTC 解析会偏移一天，统一补 T00:00:00 走本地时区
+const parseLocalRangeBound = (s: string) => new Date(s.length === 10 ? `${s}T00:00:00` : s)
 const getGranularityForRange = (start: string, end: string): 'day' | 'hour' => {
-  const startTime = new Date(`${start}T00:00:00`).getTime()
-  const endTime = new Date(`${end}T00:00:00`).getTime()
-  const daysDiff = Math.ceil((endTime - startTime) / (1000 * 60 * 60 * 24))
-  return daysDiff <= 1 ? 'hour' : 'day'
+  const hours = (parseLocalRangeBound(end).getTime() - parseLocalRangeBound(start).getTime()) / (1000 * 60 * 60)
+  // 与旧“日期差 ≤1 天用小时粒度”等价：纯日期差 1 天归一化后实际 48h，仍需 hour
+  return hours <= 48 ? 'hour' : 'day'
 }
 const defaultRange = getLast24HoursRangeDates()
 const startDate = ref(defaultRange.start); const endDate = ref(defaultRange.end)
@@ -319,11 +342,20 @@ const applyRouteQueryFilters = () => {
   const queryEndDate = getSingleQueryValue(route.query.end_date)
   const queryUserId = getNumericQueryValue(route.query.user_id)
 
+  // 仪表盘深链传纯日期：补全为 datetime-local 格式并保持“end 含当天”语义
+  const normalizeRouteStart = (s: string) => (s.includes('T') ? s : `${s}T00:00`)
+  const normalizeRouteEnd = (s: string) => {
+    if (s.includes('T')) return s
+    const d = new Date(`${s}T00:00:00`)
+    d.setDate(d.getDate() + 1)
+    return formatLDT(d)
+  }
+
   if (queryStartDate) {
-    startDate.value = queryStartDate
+    startDate.value = normalizeRouteStart(queryStartDate)
   }
   if (queryEndDate) {
-    endDate.value = queryEndDate
+    endDate.value = normalizeRouteEnd(queryEndDate)
   }
 
   filters.value = {
@@ -534,6 +566,7 @@ const refreshData = () => {
   loadChartData()
   if (activeTab.value === 'errors') loadAdminErrors()
   if (rankingMounted.value) rankingRef.value?.reload()
+  if (statsMounted.value) statsRef.value?.reload()
 }
 const resetFilters = () => {
   const range = getLast24HoursRangeDates()
@@ -616,7 +649,7 @@ const exportToExcel = async () => {
     if(!c.signal.aborted) {
       const wb = XLSX.utils.book_new()
       XLSX.utils.book_append_sheet(wb, ws, 'Usage')
-      saveAs(new Blob([XLSX.write(wb, { bookType: 'xlsx', type: 'array' })], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), `usage_${filters.value.start_date}_to_${filters.value.end_date}.xlsx`)
+      saveAs(new Blob([XLSX.write(wb, { bookType: 'xlsx', type: 'array' })], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), `usage_${sanitizeRangeForFilename(filters.value.start_date)}_to_${sanitizeRangeForFilename(filters.value.end_date)}.xlsx`)
       appStore.showSuccess(t('usage.exportSuccess'))
     }
   } catch (error) { console.error('Failed to export:', error); appStore.showError('Export Failed') }
@@ -771,21 +804,25 @@ const loadSavedColumns = () => {
 }
 
 // Detail tabs
-type DetailTab = 'usage' | 'errors' | 'ranking'
+type DetailTab = 'usage' | 'errors' | 'ranking' | 'stats'
 const activeTab = ref<DetailTab>('usage')
 const detailTabs = computed(() => [
   { key: 'usage' as const, label: t('usage.tabs.usage'), icon: 'document' as const },
   { key: 'errors' as const, label: t('usage.tabs.errors'), icon: 'exclamationTriangle' as const },
   { key: 'ranking' as const, label: t('usage.tabs.ranking'), icon: 'chart' as const },
+  { key: 'stats' as const, label: t('usage.tabs.stats'), icon: 'bolt' as const },
 ])
 const usageFiltersRef = ref<InstanceType<typeof UsageFilters> | null>(null)
 const rankingMounted = ref(false)
 const rankingRef = ref<InstanceType<typeof UserTokenRanking> | null>(null)
+const statsMounted = ref(false)
+const statsRef = ref<InstanceType<typeof PeakWeightedTokenStats> | null>(null)
 
 const switchTab = (tab: DetailTab) => {
   activeTab.value = tab
   if (tab === 'errors' && errRows.value.length === 0) loadAdminErrors()
   if (tab === 'ranking') rankingMounted.value = true
+  if (tab === 'stats') statsMounted.value = true
 }
 
 // Error tab state
@@ -799,9 +836,13 @@ const errSortOrder = ref<'asc' | 'desc'>('desc')
 const showErrorModal = ref(false)
 const selectedErrorId = ref<number | null>(null)
 
-// 注意：'YYYY-MM-DDT00:00:00' 无时区后缀，按本地时区解析后再转 UTC——与页面其它日期处理语义一致，刻意如此，勿改成 'T00:00:00Z'
-const toRFC3339 = (d: string | undefined, endOfDay = false): string | undefined =>
-  d ? new Date(d + (endOfDay ? 'T23:59:59.999' : 'T00:00:00')).toISOString() : undefined
+// 纯日期补 'T00:00:00'/'T23:59:59.999'（无时区后缀，按本地时区解析后转 UTC）；
+// 带时间（YYYY-MM-DDTHH:mm）直接按精确时刻解析，忽略 endOfDay
+const toRFC3339 = (d: string | undefined, endOfDay = false): string | undefined => {
+  if (!d) return undefined
+  if (d.includes('T')) return new Date(d).toISOString()
+  return new Date(d + (endOfDay ? 'T23:59:59.999' : 'T00:00:00')).toISOString()
+}
 
 const loadAdminErrors = async () => {
   errLoading.value = true

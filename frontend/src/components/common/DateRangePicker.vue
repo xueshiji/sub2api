@@ -41,9 +41,10 @@
           <div class="date-picker-field">
             <label class="date-picker-label">{{ t('dates.startDate') }}</label>
             <input
-              type="date"
+              :type="withTime ? 'datetime-local' : 'date'"
+              :step="withTime ? 3600 : undefined"
               v-model="localStartDate"
-              :max="localEndDate || tomorrow"
+              :max="localEndDate || endMax"
               class="date-picker-input"
               @change="onDateChange"
             />
@@ -54,10 +55,11 @@
           <div class="date-picker-field">
             <label class="date-picker-label">{{ t('dates.endDate') }}</label>
             <input
-              type="date"
+              :type="withTime ? 'datetime-local' : 'date'"
+              :step="withTime ? 3600 : undefined"
               v-model="localEndDate"
               :min="localStartDate"
-              :max="tomorrow"
+              :max="endMax"
               class="date-picker-input"
               @change="onDateChange"
             />
@@ -89,6 +91,7 @@ interface DatePreset {
 interface Props {
   startDate: string
   endDate: string
+  withTime?: boolean
 }
 
 interface Emits {
@@ -97,15 +100,18 @@ interface Emits {
   (e: 'change', range: { startDate: string; endDate: string; preset: string | null }): void
 }
 
-const props = defineProps<Props>()
+const props = withDefaults(defineProps<Props>(), { withTime: false })
 const emit = defineEmits<Emits>()
 
 const { t, locale } = useI18n()
 
+// withTime 下外部传入的纯日期归一为 datetime-local 格式（仅展示兜底，end 的“含当天”语义由调用方保证）
+const normalizeLocalValue = (val: string) => (props.withTime && val.length === 10 ? `${val}T00:00` : val)
+
 const isOpen = ref(false)
 const containerRef = ref<HTMLElement | null>(null)
-const localStartDate = ref(props.startDate)
-const localEndDate = ref(props.endDate)
+const localStartDate = ref(normalizeLocalValue(props.startDate))
+const localEndDate = ref(normalizeLocalValue(props.endDate))
 const activePreset = ref<string | null>('last24Hours')
 
 const today = computed(() => {
@@ -125,6 +131,9 @@ const tomorrow = computed(() => {
   return formatDateToString(d)
 })
 
+// datetime-local 的 max 需同格式值才生效，纯日期串会被浏览器忽略
+const endMax = computed(() => (props.withTime ? formatDateTimeToString(dayStartOffset(1)) : tomorrow.value))
+
 // Helper function to format date to YYYY-MM-DD using local timezone
 const formatDateToString = (date: Date): string => {
   const year = date.getFullYear()
@@ -133,11 +142,32 @@ const formatDateToString = (date: Date): string => {
   return `${year}-${month}-${day}`
 }
 
+// datetime-local 原生格式 YYYY-MM-DDTHH:mm，new Date() 按本地时区解析
+const formatDateTimeToString = (date: Date): string =>
+  `${formatDateToString(date)}T${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
+
+// 相对今天 0 点偏移 n 天的整时刻
+const dayStartOffset = (n: number): Date => {
+  const d = new Date()
+  d.setHours(0, 0, 0, 0)
+  d.setDate(d.getDate() + n)
+  return d
+}
+
+const floorToHour = (d: Date): Date => {
+  const x = new Date(d)
+  x.setMinutes(0, 0, 0)
+  return x
+}
+
 const presets: DatePreset[] = [
   {
     labelKey: 'dates.today',
     value: 'today',
     getRange: () => {
+      if (props.withTime) {
+        return { start: formatDateTimeToString(dayStartOffset(0)), end: formatDateTimeToString(dayStartOffset(1)) }
+      }
       const t = today.value
       return { start: t, end: t }
     }
@@ -146,6 +176,9 @@ const presets: DatePreset[] = [
     labelKey: 'dates.yesterday',
     value: 'yesterday',
     getRange: () => {
+      if (props.withTime) {
+        return { start: formatDateTimeToString(dayStartOffset(-1)), end: formatDateTimeToString(dayStartOffset(0)) }
+      }
       const d = new Date()
       d.setDate(d.getDate() - 1)
       const yesterday = formatDateToString(d)
@@ -156,6 +189,11 @@ const presets: DatePreset[] = [
     labelKey: 'dates.last24Hours',
     value: 'last24Hours',
     getRange: () => {
+      if (props.withTime) {
+        const end = floorToHour(new Date())
+        const start = new Date(end.getTime() - 24 * 60 * 60 * 1000)
+        return { start: formatDateTimeToString(start), end: formatDateTimeToString(end) }
+      }
       const end = new Date()
       const start = new Date(end.getTime() - 24 * 60 * 60 * 1000)
       return {
@@ -168,6 +206,9 @@ const presets: DatePreset[] = [
     labelKey: 'dates.last7Days',
     value: '7days',
     getRange: () => {
+      if (props.withTime) {
+        return { start: formatDateTimeToString(dayStartOffset(-6)), end: formatDateTimeToString(dayStartOffset(1)) }
+      }
       const end = today.value
       const d = new Date()
       d.setDate(d.getDate() - 6)
@@ -179,6 +220,9 @@ const presets: DatePreset[] = [
     labelKey: 'dates.last14Days',
     value: '14days',
     getRange: () => {
+      if (props.withTime) {
+        return { start: formatDateTimeToString(dayStartOffset(-13)), end: formatDateTimeToString(dayStartOffset(1)) }
+      }
       const end = today.value
       const d = new Date()
       d.setDate(d.getDate() - 13)
@@ -190,6 +234,9 @@ const presets: DatePreset[] = [
     labelKey: 'dates.last30Days',
     value: '30days',
     getRange: () => {
+      if (props.withTime) {
+        return { start: formatDateTimeToString(dayStartOffset(-29)), end: formatDateTimeToString(dayStartOffset(1)) }
+      }
       const end = today.value
       const d = new Date()
       d.setDate(d.getDate() - 29)
@@ -201,6 +248,13 @@ const presets: DatePreset[] = [
     labelKey: 'dates.thisMonth',
     value: 'thisMonth',
     getRange: () => {
+      if (props.withTime) {
+        const now = new Date()
+        return {
+          start: formatDateTimeToString(new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0)),
+          end: formatDateTimeToString(dayStartOffset(1))
+        }
+      }
       const now = new Date()
       const start = formatDateToString(new Date(now.getFullYear(), now.getMonth(), 1))
       return { start, end: today.value }
@@ -210,6 +264,13 @@ const presets: DatePreset[] = [
     labelKey: 'dates.lastMonth',
     value: 'lastMonth',
     getRange: () => {
+      if (props.withTime) {
+        const now = new Date()
+        return {
+          start: formatDateTimeToString(new Date(now.getFullYear(), now.getMonth() - 1, 1, 0, 0, 0, 0)),
+          end: formatDateTimeToString(new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0))
+        }
+      }
       const now = new Date()
       const start = formatDateToString(new Date(now.getFullYear(), now.getMonth() - 1, 1))
       const end = formatDateToString(new Date(now.getFullYear(), now.getMonth(), 0))
@@ -235,8 +296,12 @@ const displayValue = computed(() => {
 })
 
 const formatDate = (dateStr: string): string => {
-  const date = new Date(dateStr + 'T00:00:00')
+  // 纯日期按 UTC 解析会偏移一天，统一补 T00:00:00 走本地时区
+  const date = new Date(dateStr.length === 10 ? `${dateStr}T00:00:00` : dateStr)
   const dateLocale = locale.value === 'zh' ? 'zh-CN' : 'en-US'
+  if (props.withTime) {
+    return date.toLocaleString(dateLocale, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })
+  }
   return date.toLocaleDateString(dateLocale, { month: 'short', day: 'numeric' })
 }
 
@@ -294,7 +359,7 @@ const handleEscape = (event: KeyboardEvent) => {
 watch(
   () => props.startDate,
   (val) => {
-    localStartDate.value = val
+    localStartDate.value = normalizeLocalValue(val)
     onDateChange()
   }
 )
@@ -302,7 +367,7 @@ watch(
 watch(
   () => props.endDate,
   (val) => {
-    localEndDate.value = val
+    localEndDate.value = normalizeLocalValue(val)
     onDateChange()
   }
 )

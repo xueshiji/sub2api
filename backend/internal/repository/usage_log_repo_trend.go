@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
 )
 
@@ -704,6 +705,132 @@ func (r *usageLogRepository) GetUserBreakdownStats(ctx context.Context, startTim
 			&row.Cost,
 			&row.ActualCost,
 			&row.AccountCost,
+		); err != nil {
+			return nil, err
+		}
+		results = append(results, row)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return results, nil
+}
+
+// GetPeakWeightedTokenStats 统计时间范围内每用户的 token 用量。高峰时段与倍率不预设，
+// 逐行取所属订阅分组的配置（subscription_type / peak_rate_enabled / peak_start /
+// peak_end / peak_rate_multiplier）：请求时刻（服务配置时区）落在所属分组高峰窗口内时，
+// 该行 token 按分组倍率加权，仅周一至周五生效（周六/周日不加权），用于评估峰值资源
+// 占用。同时返回高峰窗口内的原始 input/cache_read/output 及其加权量，供积分消耗
+// （非高峰单价 × 加权量）计算。筛选维度与用户明细分解一致。
+func (r *usageLogRepository) GetPeakWeightedTokenStats(ctx context.Context, startTime, endTime time.Time, dim usagestats.UserBreakdownDimension) (results []usagestats.PeakWeightedTokenItem, err error) {
+	// CASE 必须在 SUM 内部逐行判定，高峰窗口判定在 scoped CTE 中只写一次；peak_start/
+	// peak_end 允许 H:MM 一位小时，须 lpad 补零到 5 位后字典序才与时间序一致；仅订阅
+	// 类型分组参与加权，周六/周日不加权，与计费侧 Group.PeakMultiplierAt 口径一致。
+	query := `
+		WITH scoped AS (
+			SELECT
+				ul.user_id,
+				ul.input_tokens,
+				ul.output_tokens,
+				ul.cache_creation_tokens,
+				ul.cache_read_tokens,
+				g.peak_rate_multiplier AS peak_multiplier,
+				CASE
+					WHEN g.peak_rate_enabled AND g.subscription_type = 'subscription' AND g.peak_start <> '' AND g.peak_end <> ''
+						AND EXTRACT(ISODOW FROM ul.created_at AT TIME ZONE $3) < 6
+						AND to_char(ul.created_at AT TIME ZONE $3, 'HH24:MI') >= lpad(g.peak_start, 5, '0')
+						AND to_char(ul.created_at AT TIME ZONE $3, 'HH24:MI') < lpad(g.peak_end, 5, '0')
+					THEN true ELSE false END AS in_peak
+			FROM usage_logs ul
+			LEFT JOIN groups g ON g.id = NULLIF(ul.group_id, 0)
+			WHERE ul.created_at >= $1 AND ul.created_at < $2`
+	args := []any{startTime, endTime, timezone.Name()}
+
+	if dim.GroupID > 0 {
+		query += fmt.Sprintf(" AND ul.group_id = $%d", len(args)+1)
+		args = append(args, dim.GroupID)
+	}
+	if dim.Model != "" {
+		query += fmt.Sprintf(" AND %s = $%d", resolveModelDimensionExpression(dim.ModelType), len(args)+1)
+		args = append(args, dim.Model)
+	}
+	if dim.UserID > 0 {
+		query += fmt.Sprintf(" AND ul.user_id = $%d", len(args)+1)
+		args = append(args, dim.UserID)
+	}
+	if dim.APIKeyID > 0 {
+		query += fmt.Sprintf(" AND ul.api_key_id = $%d", len(args)+1)
+		args = append(args, dim.APIKeyID)
+	}
+	if dim.AccountID > 0 {
+		query += fmt.Sprintf(" AND ul.account_id = $%d", len(args)+1)
+		args = append(args, dim.AccountID)
+	}
+	if dim.RequestType != nil {
+		condition, conditionArgs := buildRequestTypeFilterConditionWithAlias(len(args)+1, *dim.RequestType, "ul")
+		query += " AND " + condition
+		args = append(args, conditionArgs...)
+	}
+	if dim.Stream != nil {
+		query += fmt.Sprintf(" AND ul.stream = $%d", len(args)+1)
+		args = append(args, *dim.Stream)
+	}
+	if dim.BillingType != nil {
+		query += fmt.Sprintf(" AND ul.billing_type = $%d", len(args)+1)
+		args = append(args, *dim.BillingType)
+	}
+
+	query += `
+		)
+		SELECT
+			s.user_id,
+			COALESCE(NULLIF(u.username, ''), u.email, 'user#' || s.user_id) AS user_label,
+			COALESCE(SUM((s.input_tokens + s.output_tokens + s.cache_creation_tokens + s.cache_read_tokens) * CASE WHEN s.in_peak THEN s.peak_multiplier ELSE 1 END), 0) AS weighted_tokens,
+			COALESCE(SUM(s.input_tokens + s.output_tokens + s.cache_creation_tokens + s.cache_read_tokens), 0) AS total_tokens,
+			COALESCE(SUM(s.cache_read_tokens), 0) AS cache_read_tokens,
+			COALESCE(SUM(s.input_tokens), 0) AS input_tokens,
+			COALESCE(SUM(s.output_tokens), 0) AS output_tokens,
+			COALESCE(SUM(s.input_tokens * CASE WHEN s.in_peak THEN s.peak_multiplier ELSE 1 END), 0) AS weighted_input_tokens,
+			COALESCE(SUM(s.cache_read_tokens * CASE WHEN s.in_peak THEN s.peak_multiplier ELSE 1 END), 0) AS weighted_cache_read_tokens,
+			COALESCE(SUM(s.output_tokens * CASE WHEN s.in_peak THEN s.peak_multiplier ELSE 1 END), 0) AS weighted_output_tokens,
+			COALESCE(SUM(s.input_tokens) FILTER (WHERE s.in_peak), 0) AS peak_input_tokens,
+			COALESCE(SUM(s.cache_read_tokens) FILTER (WHERE s.in_peak), 0) AS peak_cache_read_tokens,
+			COALESCE(SUM(s.output_tokens) FILTER (WHERE s.in_peak), 0) AS peak_output_tokens,
+			COUNT(*) AS requests
+		FROM scoped s
+		LEFT JOIN users u ON u.id = s.user_id
+		GROUP BY s.user_id, u.username, u.email
+		ORDER BY weighted_tokens DESC`
+
+	rows, err := r.sql.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil && err == nil {
+			err = closeErr
+			results = nil
+		}
+	}()
+
+	results = make([]usagestats.PeakWeightedTokenItem, 0)
+	for rows.Next() {
+		var row usagestats.PeakWeightedTokenItem
+		if err := rows.Scan(
+			&row.UserID,
+			&row.UserLabel,
+			&row.WeightedTokens,
+			&row.TotalTokens,
+			&row.CacheReadTokens,
+			&row.InputTokens,
+			&row.OutputTokens,
+			&row.WeightedInputTokens,
+			&row.WeightedCacheReadTokens,
+			&row.WeightedOutputTokens,
+			&row.PeakInputTokens,
+			&row.PeakCacheReadTokens,
+			&row.PeakOutputTokens,
+			&row.Requests,
 		); err != nil {
 			return nil, err
 		}

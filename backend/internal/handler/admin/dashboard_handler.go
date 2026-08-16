@@ -42,7 +42,7 @@ func parseTimeRange(c *gin.Context) (time.Time, time.Time) {
 	var startTime, endTime time.Time
 
 	if startDate != "" {
-		if t, err := timezone.ParseInUserLocation("2006-01-02", startDate, userTZ); err == nil {
+		if t, _, err := timezone.ParseDateOrMinute(startDate, userTZ); err == nil {
 			startTime = t
 		} else {
 			startTime = timezone.StartOfDayInUserLocation(now.AddDate(0, 0, -7), userTZ)
@@ -52,8 +52,12 @@ func parseTimeRange(c *gin.Context) (time.Time, time.Time) {
 	}
 
 	if endDate != "" {
-		if t, err := timezone.ParseInUserLocation("2006-01-02", endDate, userTZ); err == nil {
-			endTime = t.Add(24 * time.Hour) // Include the end date
+		if t, hasTime, err := timezone.ParseDateOrMinute(endDate, userTZ); err == nil {
+			// 纯日期包含当天，带时间则精确到所给时刻
+			if !hasTime {
+				t = t.AddDate(0, 0, 1)
+			}
+			endTime = t
 		} else {
 			endTime = timezone.StartOfDayInUserLocation(now.AddDate(0, 0, 1), userTZ)
 		}
@@ -559,6 +563,79 @@ func (h *DashboardHandler) GetUserSpendingRanking(c *gin.Context) {
 	dashboardUsersRankingCache.Set(cacheKey, payload)
 	c.Header("X-Snapshot-Cache", "miss")
 	response.Success(c, payload)
+}
+
+// GetPeakWeightedTokenStats handles per-user token stats with peak-hour weighting.
+// GET /api/v1/admin/dashboard/peak-weighted-tokens
+// 高峰时段与倍率取各订阅分组的实际配置（subscription_type/peak_rate_enabled/
+// peak_start/peak_end/peak_rate_multiplier），落在所属分组高峰窗口内的 token
+// 按分组倍率加权，用于峰值资源占用分析。
+// Query params: start_date, end_date 及与 user-breakdown 相同的筛选参数。
+func (h *DashboardHandler) GetPeakWeightedTokenStats(c *gin.Context) {
+	startTime, endTime := parseTimeRange(c)
+
+	dim := usagestats.UserBreakdownDimension{}
+	if v := c.Query("group_id"); v != "" {
+		if id, err := strconv.ParseInt(v, 10, 64); err == nil {
+			dim.GroupID = id
+		}
+	}
+	dim.Model = c.Query("model")
+	rawModelSource := strings.TrimSpace(c.DefaultQuery("model_source", usagestats.ModelSourceRequested))
+	if !usagestats.IsValidModelSource(rawModelSource) {
+		response.BadRequest(c, "Invalid model_source, use requested/upstream/mapping")
+		return
+	}
+	dim.ModelType = rawModelSource
+
+	if v := c.Query("user_id"); v != "" {
+		if id, err := strconv.ParseInt(v, 10, 64); err == nil {
+			dim.UserID = id
+		}
+	}
+	if v := c.Query("api_key_id"); v != "" {
+		if id, err := strconv.ParseInt(v, 10, 64); err == nil {
+			dim.APIKeyID = id
+		}
+	}
+	if v := c.Query("account_id"); v != "" {
+		if id, err := strconv.ParseInt(v, 10, 64); err == nil {
+			dim.AccountID = id
+		}
+	}
+	if v := strings.TrimSpace(c.Query("request_type")); v != "" {
+		parsed, err := service.ParseUsageRequestType(v)
+		if err != nil {
+			response.BadRequest(c, err.Error())
+			return
+		}
+		rtVal := int16(parsed)
+		dim.RequestType = &rtVal
+	}
+	if v := c.Query("stream"); v != "" {
+		if s, err := strconv.ParseBool(v); err == nil {
+			dim.Stream = &s
+		}
+	}
+	if v := c.Query("billing_type"); v != "" {
+		if bt, err := strconv.ParseInt(v, 10, 8); err == nil {
+			btVal := int8(bt)
+			dim.BillingType = &btVal
+		}
+	}
+
+	stats, err := h.dashboardService.GetPeakWeightedTokenStats(c.Request.Context(), startTime, endTime, dim)
+	if err != nil {
+		response.Error(c, 500, "Failed to get peak weighted token stats")
+		return
+	}
+
+	response.Success(c, gin.H{
+		"users":      stats,
+		"start_date": c.Query("start_date"),
+		"end_date":   c.Query("end_date"),
+		"timezone":   timezone.Name(),
+	})
 }
 
 // GetBatchUsersUsage handles getting usage stats for multiple users

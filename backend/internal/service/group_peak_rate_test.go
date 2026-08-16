@@ -28,6 +28,11 @@ func at(hour, min int) time.Time {
 	return time.Date(2026, 6, 29, hour, min, 0, 0, time.UTC)
 }
 
+// atDay 的 2026-06-27 为周六、28 为周日、29 为周一。
+func atDay(day, hour, min int) time.Time {
+	return time.Date(2026, 6, day, hour, min, 0, 0, time.UTC)
+}
+
 func TestPeakMultiplierAt_DisabledOrUnconfigured(t *testing.T) {
 	cases := []struct {
 		name string
@@ -73,6 +78,27 @@ func TestPeakMultiplierAt_Boundaries(t *testing.T) {
 		t.Run(c.t.Format("15:04"), func(t *testing.T) {
 			if got := g.PeakMultiplierAt(c.t); got != c.want {
 				t.Fatalf("at %s: expect %v, got %v", c.t.Format("15:04"), c.want, got)
+			}
+		})
+	}
+}
+
+func TestPeakMultiplierAt_WeekendExcluded(t *testing.T) {
+	g := newPeakGroup(true, "14:00", "18:00", 3.0)
+	cases := []struct {
+		name string
+		at   time.Time
+		want float64
+	}{
+		{"saturday in window", atDay(27, 15, 30), 1.0},
+		{"sunday in window", atDay(28, 15, 30), 1.0},
+		{"monday in window", atDay(29, 15, 30), 3.0},
+		{"saturday off window", atDay(27, 20, 0), 1.0},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := g.PeakMultiplierAt(c.at); got != c.want {
+				t.Fatalf("at %s: expect %v, got %v", c.at.Format("2006-01-02 15:04"), c.want, got)
 			}
 		})
 	}
