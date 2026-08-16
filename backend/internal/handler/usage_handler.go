@@ -151,21 +151,25 @@ func (h *UsageHandler) parseUserUsageFilters(c *gin.Context, requireRange bool) 
 	endDateStr := strings.TrimSpace(c.Query("end_date"))
 
 	if startDateStr != "" {
-		t, err := timezone.ParseInUserLocation("2006-01-02", startDateStr, userTZ)
+		t, _, err := timezone.ParseDateOrMinute(startDateStr, userTZ)
 		if err != nil {
-			response.BadRequest(c, "Invalid start_date format, use YYYY-MM-DD")
+			response.BadRequest(c, "Invalid start_date format, use YYYY-MM-DD or YYYY-MM-DDTHH:mm")
 			return nil, false
 		}
 		startTime = t
 		startPtr = &startTime
 	}
 	if endDateStr != "" {
-		t, err := timezone.ParseInUserLocation("2006-01-02", endDateStr, userTZ)
+		t, hasTime, err := timezone.ParseDateOrMinute(endDateStr, userTZ)
 		if err != nil {
-			response.BadRequest(c, "Invalid end_date format, use YYYY-MM-DD")
+			response.BadRequest(c, "Invalid end_date format, use YYYY-MM-DD or YYYY-MM-DDTHH:mm")
 			return nil, false
 		}
-		endTime = t.AddDate(0, 0, 1)
+		// 纯日期包含当天（次日 00:00 为半开上界），带时间精确到所给时刻。
+		if !hasTime {
+			t = t.AddDate(0, 0, 1)
+		}
+		endTime = t
 		endPtr = &endTime
 	}
 
@@ -277,20 +281,22 @@ func (h *UsageHandler) ListErrors(c *gin.Context) {
 	// Date range (half-open [start, end)), reuse usage-list semantics.
 	userTZ := c.Query("timezone")
 	if startDateStr := c.Query("start_date"); startDateStr != "" {
-		t, err := timezone.ParseInUserLocation("2006-01-02", startDateStr, userTZ)
+		t, _, err := timezone.ParseDateOrMinute(startDateStr, userTZ)
 		if err != nil {
-			response.BadRequest(c, "Invalid start_date format, use YYYY-MM-DD")
+			response.BadRequest(c, "Invalid start_date format, use YYYY-MM-DD or YYYY-MM-DDTHH:mm")
 			return
 		}
 		filter.StartTime = &t
 	}
 	if endDateStr := c.Query("end_date"); endDateStr != "" {
-		t, err := timezone.ParseInUserLocation("2006-01-02", endDateStr, userTZ)
+		t, hasTime, err := timezone.ParseDateOrMinute(endDateStr, userTZ)
 		if err != nil {
-			response.BadRequest(c, "Invalid end_date format, use YYYY-MM-DD")
+			response.BadRequest(c, "Invalid end_date format, use YYYY-MM-DD or YYYY-MM-DDTHH:mm")
 			return
 		}
-		t = t.AddDate(0, 0, 1)
+		if !hasTime {
+			t = t.AddDate(0, 0, 1)
+		}
 		filter.EndTime = &t
 	}
 

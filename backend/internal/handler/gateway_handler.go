@@ -1491,13 +1491,17 @@ func (h *GatewayHandler) parseUsageDateRange(c *gin.Context) (time.Time, time.Ti
 	startTime := now.AddDate(0, 0, -30)
 
 	if s := c.Query("start_date"); s != "" {
-		if t, err := timezone.ParseInLocation("2006-01-02", s); err == nil {
+		if t, _, err := timezone.ParseDateOrMinute(s, ""); err == nil {
 			startTime = t
 		}
 	}
 	if s := c.Query("end_date"); s != "" {
-		if t, err := timezone.ParseInLocation("2006-01-02", s); err == nil {
-			endTime = t.AddDate(0, 0, 1) // half-open range upper bound
+		if t, hasTime, err := timezone.ParseDateOrMinute(s, ""); err == nil {
+			// 纯日期含当天（次日 00:00 为半开上界），带时间精确到所给时刻。
+			if !hasTime {
+				t = t.AddDate(0, 0, 1)
+			}
+			endTime = t
 		}
 	}
 	return startTime, endTime

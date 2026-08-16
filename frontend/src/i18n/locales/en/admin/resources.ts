@@ -567,6 +567,18 @@ export default {
           cost: 'Cost'
         }
       },
+      peakStats: {
+        subtitle: 'Credits are scaled by each subscription group\'s peak-hours multiplier; discounted upstream models are reduced by their multipliers',
+        userCount: '{count} users',
+        exportHtml: 'Export HTML',
+        openReport: 'Open report in new tab',
+        openingReport: 'Generating report…',
+        openReportHint: 'The credits report (KPIs / charts / details) opens in a new browser tab as a self-contained light page',
+        popupBlocked: 'Popup blocked by the browser; allow popups for this site and retry',
+        failedToOpen: 'Failed to open the report',
+        empty: 'No usage data for the current filters',
+        failedToLoad: 'Failed to load credits stats'
+      },
       cleanup: {
         button: 'Cleanup',
         title: 'Cleanup Usage Records',

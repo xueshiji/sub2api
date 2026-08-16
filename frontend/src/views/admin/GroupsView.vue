@@ -1172,6 +1172,9 @@
               <span>{{ t("admin.groups.peakRate.enable") }}</span>
             </label>
           </div>
+          <p v-if="createForm.peak_rate_enabled" class="mb-4 text-xs text-gray-500 dark:text-gray-400">
+            {{ t("admin.groups.peakRate.weekendNote") }}
+          </p>
           <div
             v-if="createForm.peak_rate_enabled"
             class="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3"
@@ -2904,6 +2907,9 @@
               <span>{{ t("admin.groups.peakRate.enable") }}</span>
             </label>
           </div>
+          <p v-if="editForm.peak_rate_enabled" class="mb-4 text-xs text-gray-500 dark:text-gray-400">
+            {{ t("admin.groups.peakRate.weekendNote") }}
+          </p>
           <div
             v-if="editForm.peak_rate_enabled"
             class="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3"

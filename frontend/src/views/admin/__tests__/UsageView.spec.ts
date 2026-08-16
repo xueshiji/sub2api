@@ -48,6 +48,15 @@ const formatLocalDate = (date: Date): string => {
   return `${year}-${month}-${day}`
 }
 
+// 与 UsageView 默认范围一致：datetime-local 格式，分钟取整
+const formatLocalDateTime = (date: Date): string =>
+  `${formatLocalDate(date)}T${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
+const floorToHour = (date: Date): Date => {
+  const d = new Date(date)
+  d.setMinutes(0, 0, 0)
+  return d
+}
+
 vi.mock('@/api/admin', () => ({
   adminAPI: {
     usage: {
@@ -365,11 +374,11 @@ describe('admin UsageView distribution metric toggles', () => {
     await flushPromises()
 
     expect(getSnapshotV2).toHaveBeenCalledTimes(1)
-    const now = new Date()
+    const now = floorToHour(new Date())
     const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000)
     expect(getSnapshotV2).toHaveBeenCalledWith(expect.objectContaining({
-      start_date: formatLocalDate(yesterday),
-      end_date: formatLocalDate(now),
+      start_date: formatLocalDateTime(yesterday),
+      end_date: formatLocalDateTime(now),
       granularity: 'hour'
     }))
 
@@ -613,7 +622,7 @@ describe('admin UsageView ranking tab', () => {
     expect(wrapper.find('[data-test="ranking"]').exists()).toBe(false)
 
     const tabs = wrapper.findAll('[data-testid="usage-detail-tab"]')
-    expect(tabs).toHaveLength(3)
+    expect(tabs).toHaveLength(4)
     await tabs[2].trigger('click')
     await flushPromises()
     expect(wrapper.find('[data-test="ranking"]').exists()).toBe(true)

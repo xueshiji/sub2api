@@ -140,6 +140,21 @@ func ParseInUserLocation(layout, value, userTZ string) (time.Time, error) {
 	return time.ParseInLocation(layout, value, loc)
 }
 
+// ParseDateOrMinute parses "2006-01-02T15:04" (minute precision, exact
+// boundary) first, then its second-precision variant "2006-01-02T15:04:05",
+// falling back to "2006-01-02". hasTime reports whether the value carried an
+// explicit time part. userTZ semantics match ParseInUserLocation.
+func ParseDateOrMinute(value, userTZ string) (t time.Time, hasTime bool, err error) {
+	if t, err := ParseInUserLocation("2006-01-02T15:04", value, userTZ); err == nil {
+		return t, true, nil
+	}
+	if t, err := ParseInUserLocation("2006-01-02T15:04:05", value, userTZ); err == nil {
+		return t, true, nil
+	}
+	t, err = ParseInUserLocation("2006-01-02", value, userTZ)
+	return t, false, err
+}
+
 // NowInUserLocation returns the current time in the user's timezone.
 // If userTZ is empty or invalid, falls back to the configured server timezone.
 func NowInUserLocation(userTZ string) time.Time {

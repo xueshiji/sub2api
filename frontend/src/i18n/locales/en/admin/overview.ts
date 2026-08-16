@@ -1036,7 +1036,8 @@ export default {
         peakStart: 'Peak start',
         peakEnd: 'Peak end',
         peakMultiplier: 'Peak multiplier',
-        multiplierHint: 'Applies to token billing multiplier; image tokens in token billing are also affected. 0 means peak token requests are billed at 0x.'
+        multiplierHint: 'Applies to token billing multiplier; image tokens in token billing are also affected. 0 means peak token requests are billed at 0x.',
+        weekendNote: 'The peak multiplier applies Mon–Fri only; weekends (Sat/Sun) are not affected.'
       },
       profitControl: {
         enable: 'Enable profit control',

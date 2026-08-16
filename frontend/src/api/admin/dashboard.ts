@@ -194,6 +194,82 @@ export async function getUserBreakdown(params: UserBreakdownParams): Promise<Use
   return data
 }
 
+export interface PeakWeightedTokenItem {
+  user_id: number
+  user_label: string
+  weighted_tokens: number
+  total_tokens: number
+  cache_read_tokens: number
+  input_tokens: number
+  output_tokens: number
+  requests: number
+  peak_input_tokens: number
+  peak_cache_read_tokens: number
+  peak_output_tokens: number
+  weighted_input_tokens: number
+  weighted_cache_read_tokens: number
+  weighted_output_tokens: number
+  // 上游模型命中积分折扣的量：加权量用于折扣后总积分，非高峰原始量用于高峰/非高峰积分拆分
+  discounted_weighted_input_tokens: number
+  discounted_weighted_cache_read_tokens: number
+  discounted_weighted_output_tokens: number
+  discounted_offpeak_input_tokens: number
+  discounted_offpeak_cache_read_tokens: number
+  discounted_offpeak_output_tokens: number
+}
+
+export interface PeakWeightedModelDetail {
+  user_id: number
+  model: string
+  in_peak: boolean
+  cache_read_tokens: number
+  input_tokens: number
+  output_tokens: number
+}
+
+export interface PeakWeightedTokenStatsParams {
+  start_date?: string
+  end_date?: string
+  group_id?: number
+  model?: string
+  model_source?: 'requested' | 'upstream' | 'mapping'
+  user_id?: number
+  api_key_id?: number
+  account_id?: number
+  request_type?: UsageRequestType
+  stream?: boolean
+  billing_type?: number | null
+}
+
+export interface PeakWeightedTokenStatsResponse {
+  users: PeakWeightedTokenItem[]
+  model_details: PeakWeightedModelDetail[]
+  start_date: string
+  end_date: string
+  timezone: string
+}
+
+export async function getPeakWeightedTokenStats(
+  params: PeakWeightedTokenStatsParams
+): Promise<PeakWeightedTokenStatsResponse> {
+  const { data } = await apiClient.get<PeakWeightedTokenStatsResponse>(
+    '/admin/dashboard/peak-weighted-tokens',
+    { params }
+  )
+  return data
+}
+
+/**
+ * 托管积分报告 HTML，返回一次性 view id；新标签页 GET /admin/dashboard/peak-report-views/:id 打开。
+ */
+export async function createPeakReportView(html: string): Promise<string> {
+  const { data } = await apiClient.post<{ view_id: string }>(
+    '/admin/dashboard/peak-report-views',
+    { html }
+  )
+  return data.view_id
+}
+
 /**
  * Get dashboard snapshot v2 (aggregated response for heavy admin pages).
  */

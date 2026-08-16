@@ -161,3 +161,49 @@ func TestStartOfWeek_Boundaries(t *testing.T) {
 		})
 	}
 }
+
+func TestParseDateOrMinute(t *testing.T) {
+	if err := Init("Asia/Shanghai"); err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+	t.Cleanup(func() { _ = Init("UTC") })
+
+	loc := Location()
+
+	cases := []struct {
+		name    string
+		value   string
+		userTZ  string
+		want    time.Time
+		hasTime bool
+		wantErr bool
+	}{
+		{"date-only", "2026-08-21", "", time.Date(2026, 8, 21, 0, 0, 0, 0, loc), false, false},
+		{"minute", "2026-08-21T10:30", "", time.Date(2026, 8, 21, 10, 30, 0, 0, loc), true, false},
+		{"second-variant", "2026-08-21T10:30:05", "", time.Date(2026, 8, 21, 10, 30, 5, 0, loc), true, false},
+		{"user-tz-utc", "2026-08-21T10:30", "UTC", time.Date(2026, 8, 21, 10, 30, 0, 0, time.UTC), true, false},
+		{"user-tz-date-only", "2026-08-21", "UTC", time.Date(2026, 8, 21, 0, 0, 0, 0, time.UTC), false, false},
+		{"invalid", "08/21/2026", "", time.Time{}, false, true},
+		{"empty", "", "", time.Time{}, false, true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got, hasTime, err := ParseDateOrMinute(c.value, c.userTZ)
+			if c.wantErr {
+				if err == nil {
+					t.Errorf("ParseDateOrMinute(%q) err = nil, want error", c.value)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("ParseDateOrMinute(%q) err = %v", c.value, err)
+			}
+			if !got.Equal(c.want) {
+				t.Errorf("ParseDateOrMinute(%q) = %v, want %v", c.value, got, c.want)
+			}
+			if hasTime != c.hasTime {
+				t.Errorf("ParseDateOrMinute(%q) hasTime = %v, want %v", c.value, hasTime, c.hasTime)
+			}
+		})
+	}
+}

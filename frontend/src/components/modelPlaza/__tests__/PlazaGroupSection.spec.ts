@@ -18,6 +18,14 @@ vi.mock('@/stores/app', () => ({
   useAppStore: () => ({ cachedPublicSettings: null })
 }))
 
+vi.mock('@/i18n', () => ({
+  i18n: {
+    global: {
+      t: (key: string) => (key === 'common.peakRateWeekdaysOnly' ? '周一至周五' : key)
+    }
+  }
+}))
+
 function ladderModel(tiers: number): PlazaModel {
   const intervals = Array.from({ length: tiers }, (_, i) => ({
     min_tokens: i * 272000,
@@ -127,8 +135,8 @@ describe('PlazaGroupSection 高峰配置传递', () => {
       })
     )
     const table = wrapper.findComponent(PlazaModelPricingTable)
-    // appStore mock 无 server_utc_offset,窗口描述不带时区标注
-    expect(table.props('peakWindow')).toBe('14:00-18:00 ×1.5')
+    // appStore mock 无 server_utc_offset,窗口描述不带时区标注;高峰仅工作日生效,统一附带生效日标注
+    expect(table.props('peakWindow')).toBe('14:00-18:00 ×1.5 周一至周五')
     expect(table.props('peakRateMultiplier')).toBe(1.5)
   })
 

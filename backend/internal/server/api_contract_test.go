@@ -2630,6 +2630,14 @@ func (r *stubUsageLogRepo) GetUserBreakdownStats(ctx context.Context, startTime,
 	return nil, errors.New("not implemented")
 }
 
+func (r *stubUsageLogRepo) GetPeakWeightedTokenStats(ctx context.Context, startTime, endTime time.Time, dim usagestats.UserBreakdownDimension) ([]usagestats.PeakWeightedTokenItem, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (r *stubUsageLogRepo) GetPeakWeightedModelBreakdown(ctx context.Context, startTime, endTime time.Time, dim usagestats.UserBreakdownDimension) ([]usagestats.PeakWeightedModelDetail, error) {
+	return nil, errors.New("not implemented")
+}
+
 func (r *stubUsageLogRepo) GetAPIKeyUsageTrend(ctx context.Context, startTime, endTime time.Time, granularity string, limit int) ([]usagestats.APIKeyUsageTrendPoint, error) {
 	return nil, errors.New("not implemented")
 }

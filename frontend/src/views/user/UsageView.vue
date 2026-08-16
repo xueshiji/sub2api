@@ -11,6 +11,7 @@
               <DateRangePicker
                 v-model:start-date="startDate"
                 v-model:end-date="endDate"
+                with-time
                 @change="onDateRangeChange"
               />
             </div>
@@ -326,17 +327,25 @@ let modelStatsReqSeq = 0
 
 const formatLocalDate = (date: Date): string =>
   `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+// datetime-local 原生格式 YYYY-MM-DDTHH:mm
+const formatLocalDateTime = (date: Date): string =>
+  `${formatLocalDate(date)}T${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
+// 时间值含 T 和冒号（冒号在 Windows 文件名非法），替换为紧凑格式
+const sanitizeRangeForFilename = (s: string) => s.replace(/T/g, '_').replace(/:/g, '')
 
 const getLast24HoursRangeDates = () => {
   const end = new Date()
+  end.setMinutes(0, 0, 0)
   const start = new Date(end.getTime() - 24 * 60 * 60 * 1000)
-  return { start: formatLocalDate(start), end: formatLocalDate(end) }
+  return { start: formatLocalDateTime(start), end: formatLocalDateTime(end) }
 }
 
+// 纯日期按 UTC 解析会偏移一天，统一补 T00:00:00 走本地时区
+const parseLocalRangeBound = (s: string) => new Date(s.length === 10 ? `${s}T00:00:00` : s)
 const getGranularityForRange = (start: string, end: string): 'day' | 'hour' => {
-  const startTime = new Date(`${start}T00:00:00`).getTime()
-  const endTime = new Date(`${end}T00:00:00`).getTime()
-  return Math.ceil((endTime - startTime) / (1000 * 60 * 60 * 24)) <= 1 ? 'hour' : 'day'
+  const hours = (parseLocalRangeBound(end).getTime() - parseLocalRangeBound(start).getTime()) / (1000 * 60 * 60)
+  // 与旧“日期差 ≤1 天用小时粒度”等价：纯日期差 1 天归一化后实际 48h，仍需 hour
+  return hours <= 48 ? 'hour' : 'day'
 }
 
 const defaultRange = getLast24HoursRangeDates()
@@ -681,7 +690,7 @@ const exportToCSV = async () => {
     const url = window.URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
-    link.download = `usage_${startDate.value}_to_${endDate.value}.csv`
+    link.download = `usage_${sanitizeRangeForFilename(startDate.value)}_to_${sanitizeRangeForFilename(endDate.value)}.csv`
     link.click()
     window.URL.revokeObjectURL(url)
     appStore.showSuccess(t('usage.exportSuccess'))

@@ -178,6 +178,47 @@ type UserBreakdownItem struct {
 	AccountCost  float64 `json:"account_cost"`  // 账号成本
 }
 
+// PeakWeightedTokenItem 是高峰期加权 token 统计的单用户行。
+// 加权口径取订阅分组自身的高峰时段与倍率配置：请求时刻（服务配置时区）落在
+// 所属分组高峰窗口内的 token 按分组倍率加权，用于评估峰值资源占用。
+type PeakWeightedTokenItem struct {
+	UserID          int64   `json:"user_id"`
+	UserLabel       string  `json:"user_label"`        // COALESCE(username, email, 'user#<id>')
+	WeightedTokens  float64 `json:"weighted_tokens"`   // 高峰期加权后的 token 总量
+	TotalTokens     int64   `json:"total_tokens"`      // 原始 token 总量
+	CacheReadTokens int64   `json:"cache_read_tokens"` // 缓存命中读取的输入 token
+	InputTokens     int64   `json:"input_tokens"`      // 未命中缓存的输入 token
+	OutputTokens    int64   `json:"output_tokens"`     // 输出 token
+	Requests        int64   `json:"requests"`
+	// 高峰窗口内的原始 token（未乘倍率），非高峰量 = 汇总量减去高峰量
+	PeakInputTokens     int64 `json:"peak_input_tokens"`
+	PeakCacheReadTokens int64 `json:"peak_cache_read_tokens"`
+	PeakOutputTokens    int64 `json:"peak_output_tokens"`
+	// 高峰窗口内按分组倍率加权后的量，用于积分消耗（单价 × 加权量）计算
+	WeightedInputTokens     float64 `json:"weighted_input_tokens"`
+	WeightedCacheReadTokens float64 `json:"weighted_cache_read_tokens"`
+	WeightedOutputTokens    float64 `json:"weighted_output_tokens"`
+	// 上游模型命中积分折扣的量（折扣乘数由前端积分口径应用）：
+	// 加权量用于折扣后总积分，非高峰原始量用于高峰/非高峰积分拆分（高峰积分 = 总积分 - 非高峰积分）
+	DiscountedWeightedInputTokens     float64 `json:"discounted_weighted_input_tokens"`
+	DiscountedWeightedCacheReadTokens float64 `json:"discounted_weighted_cache_read_tokens"`
+	DiscountedWeightedOutputTokens    float64 `json:"discounted_weighted_output_tokens"`
+	DiscountedOffpeakInputTokens      int64   `json:"discounted_offpeak_input_tokens"`
+	DiscountedOffpeakCacheReadTokens  int64   `json:"discounted_offpeak_cache_read_tokens"`
+	DiscountedOffpeakOutputTokens     int64   `json:"discounted_offpeak_output_tokens"`
+}
+
+// PeakWeightedModelDetail 是高峰加权统计的单用户 × 上游模型 × 高峰/非高峰明细行，
+// token 为原始（未乘倍率）量，供积分报告的模型分组明细表使用。
+type PeakWeightedModelDetail struct {
+	UserID          int64  `json:"user_id"`
+	Model           string `json:"model"` // 上游模型（upstream_model 为空回落 model）
+	InPeak          bool   `json:"in_peak"`
+	CacheReadTokens int64  `json:"cache_read_tokens"`
+	InputTokens     int64  `json:"input_tokens"`
+	OutputTokens    int64  `json:"output_tokens"`
+}
+
 // UserBreakdownDimension specifies the dimension to filter for user breakdown.
 type UserBreakdownDimension struct {
 	GroupID      int64  // filter by group_id (>0 to enable)

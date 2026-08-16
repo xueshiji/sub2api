@@ -149,7 +149,7 @@ func TestBuildKeyBillingInfoAppliesPeakMultiplier(t *testing.T) {
 			PeakRateMultiplier: 1.5,
 		},
 	}
-	now := time.Date(2026, time.July, 12, 10, 0, 0, 0, timezone.Location())
+	now := time.Date(2026, time.July, 13, 10, 0, 0, 0, timezone.Location())
 	userRate := 0.8
 
 	got := buildKeyBillingInfo(apiKey, userRate, now)
@@ -201,7 +201,7 @@ func TestKeyBillingInfoJSONKeepsZeroPeakMultiplierWhenEnabled(t *testing.T) {
 			PeakRateMultiplier: 0,
 		},
 	}
-	now := time.Date(2026, time.July, 12, 12, 0, 0, 0, timezone.Location())
+	now := time.Date(2026, time.July, 13, 12, 0, 0, 0, timezone.Location())
 	encoded, err := json.Marshal(buildKeyBillingInfo(apiKey, apiKey.Group.RateMultiplier, now))
 	require.NoError(t, err)
 

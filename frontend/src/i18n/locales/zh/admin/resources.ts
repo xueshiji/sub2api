@@ -564,6 +564,18 @@ export default {
           cost: '费用'
         }
       },
+      peakStats: {
+        subtitle: '积分按订阅分组配置的高峰时段倍率放大，上游折扣模型按乘数折减',
+        userCount: '共 {count} 位用户',
+        exportHtml: '导出 HTML',
+        openReport: '在新标签页打开报告',
+        openingReport: '正在生成报告…',
+        openReportHint: '积分报告（KPI / 图表 / 明细表）将在新的浏览器标签页中打开，报告为浅色自包含页面',
+        popupBlocked: '浏览器拦截了弹出窗口，请允许本站弹出窗口后重试',
+        failedToOpen: '打开报告失败',
+        empty: '当前筛选条件下暂无用量数据',
+        failedToLoad: '加载积分统计失败'
+      },
       cleanup: {
         button: '清理',
         title: '清理使用记录',
