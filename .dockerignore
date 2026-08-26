@@ -65,6 +65,9 @@ tmp/
 temp/
 *.tmp
 
+# release_image.sh 导出的镜像包，不能进入构建上下文
+images.tgz
+
 # Deploy files (not needed in image)
 deploy/install.sh
 deploy/sub2api.service

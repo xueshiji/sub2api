@@ -1392,6 +1392,60 @@
         </div>
       </div>
 
+      <!-- TLS Fingerprint (仅全部为 Anthropic OAuth/SetupToken/APIKey 时显示) -->
+      <div v-if="allAnthropicTLSFingerprintCapable" class="border-t border-gray-200 pt-4 dark:border-dark-600">
+        <div class="mb-3 flex items-center justify-between">
+          <label
+            id="bulk-edit-tls-fingerprint-label"
+            class="input-label mb-0"
+            for="bulk-edit-tls-fingerprint-enabled"
+          >
+            {{ t('admin.accounts.quotaControl.tlsFingerprint.label') }}
+          </label>
+          <input
+            v-model="enableTlsFingerprint"
+            id="bulk-edit-tls-fingerprint-enabled"
+            type="checkbox"
+            aria-controls="bulk-edit-tls-fingerprint-body"
+            class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+          />
+        </div>
+
+        <div
+          id="bulk-edit-tls-fingerprint-body"
+          :class="!enableTlsFingerprint && 'pointer-events-none opacity-50'"
+          role="group"
+          aria-labelledby="bulk-edit-tls-fingerprint-label"
+        >
+          <div class="mb-3 flex items-center justify-between">
+            <span class="text-sm text-gray-700 dark:text-gray-300">{{ t('admin.accounts.quotaControl.tlsFingerprint.hint') }}</span>
+            <button
+              type="button"
+              @click="tlsFingerprintEnabled = !tlsFingerprintEnabled"
+              :class="[
+                'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+                tlsFingerprintEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+              ]"
+            >
+              <span
+                :class="[
+                  'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                  tlsFingerprintEnabled ? 'translate-x-5' : 'translate-x-0'
+                ]"
+              />
+            </button>
+          </div>
+
+          <div v-if="tlsFingerprintEnabled">
+            <select v-model="tlsFingerprintProfileId" class="input">
+              <option :value="null">{{ t('admin.accounts.quotaControl.tlsFingerprint.defaultProfile') }}</option>
+              <option v-if="tlsFingerprintProfiles.length > 0" :value="-1">{{ t('admin.accounts.quotaControl.tlsFingerprint.randomProfile') }}</option>
+              <option v-for="p in tlsFingerprintProfiles" :key="p.id" :value="p.id">{{ p.name }}</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
       <!-- Groups -->
       <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
         <div class="mb-3 flex items-center justify-between">
@@ -1621,6 +1675,16 @@ const allAnthropicOAuthOrSetupToken = computed(() => {
   )
 })
 
+// 是否全部为 Anthropic OAuth/SetupToken/APIKey（TLS 指纹配置仅在此条件下显示）
+const allAnthropicTLSFingerprintCapable = computed(() => {
+  return (
+    targetSelectedPlatforms.value.length === 1 &&
+    targetSelectedPlatforms.value[0] === 'anthropic' &&
+    targetSelectedTypes.value.length > 0 &&
+    targetSelectedTypes.value.every(t => t === 'oauth' || t === 'setup-token' || t === 'apikey')
+  )
+})
+
 const filteredPresets = computed(() => {
   if (targetSelectedPlatforms.value.length === 0) return []
 
@@ -1669,6 +1733,7 @@ const enableCodexCLIOnlyAppServer = ref(false)
 const enableOpenAICompactMode = ref(false)
 const enableOpenAICompactModelMapping = ref(false)
 const enableRpmLimit = ref(false)
+const enableTlsFingerprint = ref(false)
 
 // State - field values
 const submitting = ref(false)
@@ -1721,6 +1786,9 @@ const bulkBaseRpm = ref<number | null>(null)
 const bulkRpmStrategy = ref<'tiered' | 'sticky_exempt'>('tiered')
 const bulkRpmStickyBuffer = ref<number | null>(null)
 const userMsgQueueMode = ref<string | null>(null)
+const tlsFingerprintEnabled = ref(false)
+const tlsFingerprintProfileId = ref<number | null>(null)
+const tlsFingerprintProfiles = ref<{ id: number; name: string }[]>([])
 const umqModeOptions = computed(() => [
   { value: '', label: t('admin.accounts.quotaControl.rpmLimit.umqModeOff') },
   { value: 'throttle', label: t('admin.accounts.quotaControl.rpmLimit.umqModeThrottle') },
@@ -2127,6 +2195,18 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
     updates.extra = extra
   }
 
+  // TLS fingerprint 设置（写入 extra 字段；JSONB merge 语义不会删 key，关闭须显式发空值）
+  if (enableTlsFingerprint.value) {
+    const extra = ensureExtra()
+    if (tlsFingerprintEnabled.value) {
+      extra.enable_tls_fingerprint = true
+      extra.tls_fingerprint_profile_id = tlsFingerprintProfileId.value ?? 0
+    } else {
+      extra.enable_tls_fingerprint = false
+      extra.tls_fingerprint_profile_id = 0
+    }
+  }
+
   // UMQ mode（独立于 RPM 保存）
   if (userMsgQueueMode.value !== null) {
     const umqExtra = ensureExtra()
@@ -2214,6 +2294,7 @@ const handleSubmit = async () => {
     enableOpenAICompactMode.value ||
     enableOpenAICompactModelMapping.value ||
     enableRpmLimit.value ||
+    enableTlsFingerprint.value ||
     userMsgQueueMode.value !== null
 
   if (!hasAnyFieldEnabled) {
@@ -2337,7 +2418,12 @@ const handleMixedChannelCancel = () => {
 watch(
   () => props.show,
   (newShow) => {
-    if (!newShow) {
+    if (newShow) {
+      // TLS profile 选项：打开时拉取一次，失败静默降级为仅内置默认
+      adminAPI.tlsFingerprintProfiles.list()
+        .then(profiles => { tlsFingerprintProfiles.value = profiles.map(p => ({ id: p.id, name: p.name })) })
+        .catch(() => { tlsFingerprintProfiles.value = [] })
+    } else {
       // Reset all enable flags
       enableBaseUrl.value = false
       enableModelRestriction.value = false
@@ -2401,6 +2487,9 @@ watch(
       bulkRpmStrategy.value = 'tiered'
       bulkRpmStickyBuffer.value = null
       userMsgQueueMode.value = null
+      enableTlsFingerprint.value = false
+      tlsFingerprintEnabled.value = false
+      tlsFingerprintProfileId.value = null
 
       // Reset mixed channel warning state
       showMixedChannelWarning.value = false

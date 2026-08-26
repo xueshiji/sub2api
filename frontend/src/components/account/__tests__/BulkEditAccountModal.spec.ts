@@ -24,6 +24,9 @@ vi.mock('@/api/admin', () => ({
     accounts: {
       bulkUpdate: vi.fn(),
       checkMixedChannelRisk: vi.fn()
+    },
+    tlsFingerprintProfiles: {
+      list: vi.fn()
     }
   }
 }))
@@ -96,6 +99,7 @@ describe('BulkEditAccountModal', () => {
     vi.mocked(adminAPI.accounts.checkMixedChannelRisk).mockResolvedValue({
       has_risk: false
     } as any)
+    vi.mocked(adminAPI.tlsFingerprintProfiles.list).mockResolvedValue([])
   })
 
   it('批量修改倍率时提示自动同步账号需要先关闭同步', async () => {
@@ -609,6 +613,87 @@ describe('BulkEditAccountModal', () => {
 
     expect((wrapper.get('[data-testid="bulk-edit-openai-endpoint-capability-embeddings"]').element as HTMLInputElement).checked)
       .toBe(true)
+  })
+
+  it('Anthropic 账号批量编辑可开启 TLS 指纹并绑定指定模板', async () => {
+    vi.mocked(adminAPI.tlsFingerprintProfiles.list).mockResolvedValue([
+      { id: 3, name: 'Chrome 131' }
+    ] as any)
+    const wrapper = mountModal({
+      show: false,
+      selectedPlatforms: ['anthropic'],
+      selectedTypes: ['apikey']
+    })
+    await wrapper.setProps({ show: true })
+    await flushPromises()
+
+    await wrapper.get('#bulk-edit-tls-fingerprint-enabled').setValue(true)
+    await wrapper.get('#bulk-edit-tls-fingerprint-body button').trigger('click')
+    await wrapper.get('#bulk-edit-tls-fingerprint-body select').setValue('3')
+    await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledTimes(1)
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
+      extra: {
+        enable_tls_fingerprint: true,
+        tls_fingerprint_profile_id: 3
+      }
+    })
+  })
+
+  it('批量编辑 TLS 指纹可绑定随机模板(-1)', async () => {
+    vi.mocked(adminAPI.tlsFingerprintProfiles.list).mockResolvedValue([
+      { id: 3, name: 'Chrome 131' }
+    ] as any)
+    const wrapper = mountModal({
+      show: false,
+      selectedPlatforms: ['anthropic'],
+      selectedTypes: ['oauth', 'setup-token', 'apikey']
+    })
+    await wrapper.setProps({ show: true })
+    await flushPromises()
+
+    await wrapper.get('#bulk-edit-tls-fingerprint-enabled').setValue(true)
+    await wrapper.get('#bulk-edit-tls-fingerprint-body button').trigger('click')
+    await wrapper.get('#bulk-edit-tls-fingerprint-body select').setValue('-1')
+    await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
+      extra: {
+        enable_tls_fingerprint: true,
+        tls_fingerprint_profile_id: -1
+      }
+    })
+  })
+
+  it('批量关闭 TLS 指纹时显式提交空值覆盖 JSONB 合并残留', async () => {
+    const wrapper = mountModal({
+      selectedPlatforms: ['anthropic'],
+      selectedTypes: ['oauth']
+    })
+
+    await wrapper.get('#bulk-edit-tls-fingerprint-enabled').setValue(true)
+    await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledTimes(1)
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
+      extra: {
+        enable_tls_fingerprint: false,
+        tls_fingerprint_profile_id: 0
+      }
+    })
+  })
+
+  it('TLS 指纹开关不对含 bedrock 的 Anthropic 目标展示', () => {
+    const wrapper = mountModal({
+      selectedPlatforms: ['anthropic'],
+      selectedTypes: ['apikey', 'bedrock']
+    })
+
+    expect(wrapper.find('#bulk-edit-tls-fingerprint-enabled').exists()).toBe(false)
   })
 
   it('关闭弹窗后重置新增设置的启用状态和值', async () => {
