@@ -14,6 +14,9 @@ ARG POSTGRES_IMAGE=postgres:18-alpine
 ARG GOPROXY=https://goproxy.cn,direct
 ARG GOSUMDB=sum.golang.google.cn
 ARG NPM_CONFIG_REGISTRY=
+# Host used to replace dl-cdn.alpinelinux.org in /etc/apk/repositories;
+# pass --build-arg APK_MIRROR= to keep the default CDN.
+ARG APK_MIRROR=mirrors.aliyun.com
 
 # -----------------------------------------------------------------------------
 # Stage 1: Frontend Builder
@@ -66,7 +69,9 @@ ENV GOPROXY=${GOPROXY}
 ENV GOSUMDB=${GOSUMDB}
 
 # Install build dependencies
-RUN apk add --no-cache git ca-certificates tzdata
+ARG APK_MIRROR
+RUN if [ -n "${APK_MIRROR}" ]; then sed -i "s/dl-cdn.alpinelinux.org/${APK_MIRROR}/g" /etc/apk/repositories; fi && \
+    apk add --no-cache git ca-certificates tzdata
 
 WORKDIR /app/backend
 
@@ -113,7 +118,9 @@ LABEL description="Sub2API - AI API Gateway Platform"
 LABEL org.opencontainers.image.source="https://github.com/Wei-Shaw/sub2api"
 
 # Install runtime dependencies
-RUN apk add --no-cache \
+ARG APK_MIRROR
+RUN if [ -n "${APK_MIRROR}" ]; then sed -i "s/dl-cdn.alpinelinux.org/${APK_MIRROR}/g" /etc/apk/repositories; fi && \
+    apk add --no-cache \
     ca-certificates \
     tzdata \
     su-exec \

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent } from 'vue'
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import {
   BUILTIN_PLATFORM_CATALOG,
   resetPlatformCatalog,
@@ -60,6 +60,7 @@ vi.mock('vue-i18n', async () => {
 })
 
 import EditAccountModal from '../EditAccountModal.vue'
+import { adminAPI } from '@/api/admin'
 
 const BaseDialogStub = defineComponent({
   name: 'BaseDialog',
@@ -955,6 +956,52 @@ describe('EditAccountModal', () => {
 
     expect(updateAccountMock).toHaveBeenCalledTimes(1)
     expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_long_context_billing_enabled).toBe(false)
+  })
+
+  it('回显 Anthropic API Key 账号的 TLS 指纹开关与模板绑定', async () => {
+    const account = buildAccount()
+    account.platform = 'anthropic'
+    account.enable_tls_fingerprint = true
+    account.tls_fingerprint_profile_id = 7
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+    adminAPI.tlsFingerprintProfiles.list = vi.fn().mockResolvedValue([
+      { id: 7, name: 'Chrome 131' }
+    ])
+
+    const wrapper = mountModal(account)
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="tls-fingerprint-toggle"]').classes()).toContain('bg-primary-600')
+    expect((wrapper.get('[data-testid="tls-fingerprint-profile-select"]').element as HTMLSelectElement).value).toBe('7')
+  })
+
+  it('保存 Anthropic 账号时保留随机模板绑定(-1)不被清除', async () => {
+    const account = buildAccount()
+    account.platform = 'anthropic'
+    account.enable_tls_fingerprint = true
+    account.tls_fingerprint_profile_id = -1
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+    adminAPI.tlsFingerprintProfiles.list = vi.fn().mockResolvedValue([
+      { id: 7, name: 'Chrome 131' }
+    ])
+
+    const wrapper = mountModal(account)
+    await flushPromises()
+
+    expect((wrapper.get('[data-testid="tls-fingerprint-profile-select"]').element as HTMLSelectElement).value).toBe('-1')
+
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.enable_tls_fingerprint).toBe(true)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.tls_fingerprint_profile_id).toBe(-1)
   })
 
   it('loads and clears the OAuth-only Codex namespace flatten toggle', async () => {
