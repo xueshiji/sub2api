@@ -311,6 +311,47 @@ func TestGatewayService_AnthropicAPIKeyPassthrough_BearerAuthScheme(t *testing.T
 	require.Empty(t, getHeaderRaw(countReq.Header, "cookie"))
 }
 
+// count_tokens 透传：客户端已携带 content-type / anthropic-version（经白名单以小写
+// wire 键透传）时，缺省补齐不得再以 canonical 键追加第二份。
+func TestGatewayService_AnthropicAPIKeyPassthrough_CountTokensClientSuppliedHeadersNotDuplicated(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages/count_tokens", nil)
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Request.Header.Set("anthropic-version", "2023-06-01")
+
+	svc := &GatewayService{
+		cfg: &config.Config{
+			Security: config.SecurityConfig{
+				URLAllowlist: config.URLAllowlistConfig{Enabled: false},
+			},
+		},
+	}
+	account := &Account{Platform: PlatformAnthropic, Type: AccountTypeAPIKey}
+
+	req, err := svc.buildCountTokensRequestAnthropicAPIKeyPassthrough(
+		context.Background(), c, account, []byte(`{"model":"claude-sonnet-4-5","messages":[]}`), "upstream-key",
+	)
+	require.NoError(t, err)
+
+	countValues := func(name string) int {
+		n := 0
+		for k, vals := range req.Header {
+			if strings.EqualFold(k, name) {
+				n += len(vals)
+			}
+		}
+		return n
+	}
+	require.Equal(t, 1, countValues("Content-Type"),
+		"客户端已携带 content-type 时出站不得出现第二种键形态")
+	require.Equal(t, 1, countValues("Anthropic-Version"),
+		"客户端已携带 anthropic-version 时出站不得出现第二种键形态")
+	require.Equal(t, "application/json", getHeaderRaw(req.Header, "content-type"))
+	require.Equal(t, "2023-06-01", getHeaderRaw(req.Header, "anthropic-version"))
+}
+
 // TestGatewayService_AnthropicAPIKeyPassthrough_ModelMappingEdgeCases 覆盖透传模式下模型映射的各种边界情况
 func TestGatewayService_AnthropicAPIKeyPassthrough_ModelMappingEdgeCases(t *testing.T) {
 	gin.SetMode(gin.TestMode)

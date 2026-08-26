@@ -1,7 +1,9 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -81,6 +83,33 @@ func TestIsClaudeCodeClient(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := isClaudeCodeClient(tt.userAgent, tt.metadataUserID)
+			require.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestIsClaudeCodeTraffic(t *testing.T) {
+	const unparsableUserID = "fake-user-id-12345"
+	legacyUserID := "user_a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2_account_550e8400-e29b-41d4-a716-446655440000_session_123e4567-e89b-12d3-a456-426614174000"
+
+	bodyWithBillingBlock := func(metadataUserID string) []byte {
+		return []byte(fmt.Sprintf(`{"metadata":{"user_id":%q},"system":[{"type":"text","text":"x-anthropic-billing-header plan=pro cc_version=1.0.0 cc_entrypoint=cli"}]}`, metadataUserID))
+	}
+
+	tests := []struct {
+		name                 string
+		metadataUserID       string
+		strictFallbackUserID bool
+		want                 bool
+	}{
+		{"user_id 不可解析且命中 billing block 时 strict 判否", unparsableUserID, true, false},
+		{"user_id 不可解析且命中 billing block 时非 strict 判是", unparsableUserID, false, true},
+		{"user_id 可解析且命中 billing block 时 strict 判是", legacyUserID, true, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := isClaudeCodeTraffic(context.Background(), "Go-http-client/1.1", tt.metadataUserID, bodyWithBillingBlock(tt.metadataUserID), tt.strictFallbackUserID)
 			require.Equal(t, tt.want, got)
 		})
 	}

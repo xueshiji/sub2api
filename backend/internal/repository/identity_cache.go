@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -39,11 +40,15 @@ func (c *identityCache) GetFingerprint(ctx context.Context, accountID int64) (*s
 	key := fingerprintKey(accountID)
 	val, err := c.rdb.Get(ctx, key).Result()
 	if err != nil {
+		if errors.Is(err, redis.Nil) {
+			return nil, nil
+		}
 		return nil, err
 	}
 	var fp service.Fingerprint
-	if err := json.Unmarshal([]byte(val), &fp); err != nil {
-		return nil, err
+	if uerr := json.Unmarshal([]byte(val), &fp); uerr != nil {
+		// 损坏数据按未命中处理，交给创建分支覆盖自愈
+		return nil, nil
 	}
 	return &fp, nil
 }
