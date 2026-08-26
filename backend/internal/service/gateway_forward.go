@@ -170,28 +170,18 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 		})
 	}
 
-	// Claude Code 客户端判定：UA 匹配 claude-cli/* 且携带 metadata.user_id。
-	// 真正的 Claude Code 客户端自带完整的 system prompt、cache_control 断点和 header，
-	// 不需要代理做任何 body 级别的 mimicry；强行替换反而会破坏客户端的缓存策略
-	// （长 system prompt 被替换为 ~45 tokens 的短 prompt，低于 Anthropic 1024 token
-	// 最低缓存门槛，导致系统级缓存失效）。
+	// Claude Code 客户端判定见 isClaudeCodeTraffic（含被上游网关代理、UA 被替换的
+	// 真实 CC 流量回退识别）。真正的 Claude Code 客户端自带完整的 system prompt、
+	// cache_control 断点和 header，不需要代理做任何 body 级别的 mimicry；强行替换
+	// 反而会破坏客户端的缓存策略（长 system prompt 被替换为 ~45 tokens 的短 prompt，
+	// 低于 Anthropic 1024 token 最低缓存门槛，导致系统级缓存失效）。
 	//
 	// 对于非 Claude Code 的第三方客户端（opencode 等），仍然走完整 mimicry。
 	var clientUserAgent string
 	if c != nil {
 		clientUserAgent = c.GetHeader("User-Agent")
 	}
-	isClaudeCode := IsClaudeCodeClient(ctx) || isClaudeCodeClient(clientUserAgent, parsed.MetadataUserID)
-
-	// 补充判定：上游 API 网关（如 new-api）转发真实 Claude Code 流量时，
-	// UA 会变成 Go-http-client 但 body 保留了完整的 Claude Code 特征
-	// （billing attribution block + metadata.user_id）。此时如果仍走 mimicry
-	// 重写 system prompt，会破坏 Anthropic prompt cache 的前缀匹配——
-	// 导致 messages 级缓存永远 miss、cache_creation 每轮全量重写。
-	// 通过检查 body 中的 billing attribution block 来识别被代理的真实 CC 流量。
-	if !isClaudeCode && parsed.MetadataUserID != "" {
-		isClaudeCode = systemHasBillingAttributionBlock(body)
-	}
+	isClaudeCode := isClaudeCodeTraffic(ctx, clientUserAgent, parsed.MetadataUserID, body, false)
 
 	shouldMimicClaudeCode := account.IsOAuth() && !isClaudeCode
 

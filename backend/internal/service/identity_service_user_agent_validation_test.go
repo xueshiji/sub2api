@@ -14,11 +14,16 @@ import (
 
 type stubIdentityCache struct {
 	fingerprint *Fingerprint
-	setCalls    int
-	lastSet     *Fingerprint
+	// getFingerprintErr 非空时 GetFingerprint 返回该错误（注入读取故障）
+	getFingerprintErr error
+	setCalls          int
+	lastSet           *Fingerprint
 }
 
 func (s *stubIdentityCache) GetFingerprint(_ context.Context, _ int64) (*Fingerprint, error) {
+	if s.getFingerprintErr != nil {
+		return nil, s.getFingerprintErr
+	}
 	if s.fingerprint == nil {
 		return nil, nil
 	}

@@ -101,6 +101,7 @@ type Fingerprint struct {
 
 // IdentityCache defines cache operations for identity service
 type IdentityCache interface {
+	// GetFingerprint 读取账号指纹；键不存在或数据损坏返回 (nil, nil)，仅基础设施故障返回 error。
 	GetFingerprint(ctx context.Context, accountID int64) (*Fingerprint, error)
 	SetFingerprint(ctx context.Context, accountID int64, fp *Fingerprint) error
 	// GetMaskedSessionID 获取固定的会话ID（用于会话ID伪装功能）
@@ -125,14 +126,18 @@ func NewIdentityService(cache IdentityCache) *IdentityService {
 // GetOrCreateFingerprint 获取或创建账号的指纹
 // 如果缓存存在，检测user-agent版本，新版本则更新
 // 如果缓存不存在，生成随机ClientID并从请求头创建指纹，然后缓存
+// 缓存读取故障时返回错误，由调用方决定降级方式
 func (s *IdentityService) GetOrCreateFingerprint(ctx context.Context, accountID int64, headers http.Header) (*Fingerprint, error) {
 	// 入口统一校验：创建与升级两条路径共用，任一路径漏掉都会让畸形 UA 被持久化。
 	clientUA := strings.TrimSpace(headers.Get("User-Agent"))
 	uaAcceptable := isAcceptableFingerprintUserAgent(clientUA)
 
-	// 尝试从缓存获取指纹
+	// 尝试从缓存获取指纹；故障时直接失败，避免误走创建分支生成随机 ClientID
 	cached, err := s.cache.GetFingerprint(ctx, accountID)
-	if err == nil && cached != nil {
+	if err != nil {
+		return nil, err
+	}
+	if cached != nil {
 		needWrite := false
 
 		// 只在真正阻止了一次写入时记录，便于定位污染源，同时避免被毒化客户端的
@@ -179,7 +184,7 @@ func (s *IdentityService) GetOrCreateFingerprint(ctx context.Context, accountID 
 		return cached, nil
 	}
 
-	// 缓存不存在或解析失败，创建新指纹。首次创建同样是持久化写入，
+	// 缓存不存在，创建新指纹。首次创建同样是持久化写入，
 	// 畸形 UA 在这里落库后就成了账号的长期身份，必须同样拒绝。
 	if !uaAcceptable && clientUA != "" {
 		logger.LegacyPrintf("service.identity",
@@ -290,6 +295,11 @@ func (s *IdentityService) ApplyFingerprint(req *http.Request, fp *Fingerprint) {
 	}
 }
 
+// DerivedSessionID 由账号与原始 session 派生确定性会话 ID，与 RewriteUserID 的 session 重写一致。
+func DerivedSessionID(accountID int64, sessionID string) string {
+	return generateUUIDFromSeed(fmt.Sprintf("%d::%s", accountID, sessionID))
+}
+
 // RewriteUserID 重写body中的metadata.user_id
 // 支持旧拼接格式和新 JSON 格式的 user_id 解析，
 // 根据 fingerprintUA 版本选择输出格式。
@@ -324,11 +334,12 @@ func (s *IdentityService) RewriteUserID(body []byte, accountID int64, accountUUI
 		return body, nil
 	}
 
-	sessionTail := parsed.SessionID // 原始session UUID
+	// client device_id 碰巧等于 64 位随机指纹 ClientID 的概率可忽略；命中说明 body 已是归一化形态，短路防止 session 哈希叠加。
+	if parsed.DeviceID == cachedClientID && parsed.AccountUUID == accountUUID {
+		return body, nil
+	}
 
-	// 生成新的session hash: SHA256(accountID::sessionTail) -> UUID格式
-	seed := fmt.Sprintf("%d::%s", accountID, sessionTail)
-	newSessionHash := generateUUIDFromSeed(seed)
+	newSessionHash := DerivedSessionID(accountID, parsed.SessionID)
 
 	// 根据客户端版本选择输出格式
 	version := ExtractCLIVersion(fingerprintUA)

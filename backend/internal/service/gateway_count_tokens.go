@@ -55,7 +55,7 @@ func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context,
 		return err
 	}
 
-	isClaudeCodeCT := IsClaudeCodeClient(ctx) || isClaudeCodeClient(c.GetHeader("User-Agent"), parsed.MetadataUserID)
+	isClaudeCodeCT := isClaudeCodeTraffic(ctx, c.GetHeader("User-Agent"), parsed.MetadataUserID, body, false)
 	shouldMimicClaudeCode := account.IsOAuth() && !isClaudeCodeCT
 
 	if shouldMimicClaudeCode {
@@ -391,6 +391,11 @@ func (s *GatewayService) buildCountTokensRequestAnthropicAPIKeyPassthrough(
 		body = sanitized
 	}
 
+	// Claude Code 流量：应用与 OAuth 路径一致的身份归一化（count_tokens body 无
+	// metadata.user_id，实际生效的是出站环境头统一）。固定启用。
+	var ctPassthroughFingerprint *Fingerprint
+	body, ctPassthroughFingerprint = s.normalizeAPIKeyClaudeCodeIdentity(ctx, c, account, body)
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, targetURL, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
@@ -415,11 +420,17 @@ func (s *GatewayService) buildCountTokensRequestAnthropicAPIKeyPassthrough(
 	req.Header.Del("cookie")
 	setAnthropicAPIKeyAuthHeader(req.Header, account, token)
 
-	if req.Header.Get("content-type") == "" {
-		req.Header.Set("content-type", "application/json")
+	if ctPassthroughFingerprint != nil {
+		s.identityService.ApplyFingerprint(req, ctPassthroughFingerprint)
+		applyClaudeOAuthHeaderDefaults(req)
+		normalizeClaudeCodeSessionHeader(req.Header, body, account.ID)
 	}
-	if req.Header.Get("anthropic-version") == "" {
-		req.Header.Set("anthropic-version", "2023-06-01")
+
+	if getHeaderRaw(req.Header, "content-type") == "" {
+		setHeaderRaw(req.Header, "content-type", "application/json")
+	}
+	if getHeaderRaw(req.Header, "anthropic-version") == "" {
+		setHeaderRaw(req.Header, "anthropic-version", "2023-06-01")
 	}
 
 	// 账号级请求头覆写（最终生效，覆盖上面所有来源的同名头）
@@ -454,10 +465,7 @@ func (s *GatewayService) buildCountTokensRequest(ctx context.Context, c *gin.Con
 		targetURL = s.buildCustomRelayURL(validatedURL, "/v1/messages/count_tokens", account)
 	}
 
-	clientHeaders := http.Header{}
-	if c != nil && c.Request != nil {
-		clientHeaders = c.Request.Header
-	}
+	clientHeaders := clientHeadersOf(c)
 
 	// OAuth 账号：应用统一指纹和重写 userID（受设置开关控制）
 	// 如果启用了会话ID伪装，会在重写后替换 session 部分为固定值
@@ -466,6 +474,8 @@ func (s *GatewayService) buildCountTokensRequest(ctx context.Context, c *gin.Con
 		ctEnableFP, ctEnableMPT, _ = s.settingService.GetGatewayForwardingSettings(ctx)
 	}
 	var ctFingerprint *Fingerprint
+	// api_key Claude Code 身份归一化的指纹固定启用，不受 OAuth 全局开关控制。
+	var ctAPIKeyFingerprint *Fingerprint
 	if account.IsOAuth() && s.identityService != nil {
 		fp, err := s.identityService.GetOrCreateFingerprint(ctx, account.ID, clientHeaders)
 		if err == nil {
@@ -479,9 +489,13 @@ func (s *GatewayService) buildCountTokensRequest(ctx context.Context, c *gin.Con
 				}
 			}
 		}
+	} else if account.Type == AccountTypeAPIKey && s.identityService != nil {
+		// Anthropic api_key 账号：Claude Code 流量应用与 OAuth 路径一致的身份归一化。
+		body, ctAPIKeyFingerprint = s.normalizeAPIKeyClaudeCodeIdentity(ctx, c, account, body)
 	}
 
-	// 同步 billing header cc_version 与实际发送的 User-Agent 版本
+	// OAuth 路径同步 billing header cc_version 与实际发送的 User-Agent 版本
+	// （api_key 路径已在 normalizeAPIKeyClaudeCodeIdentity 内同步）
 	if ctFingerprint != nil && ctEnableFP {
 		body = syncBillingHeaderVersion(body, ctFingerprint.UserAgent)
 	}
@@ -528,9 +542,15 @@ func (s *GatewayService) buildCountTokensRequest(ctx context.Context, c *gin.Con
 		}
 	}
 
-	// OAuth 账号：应用指纹到请求头（受设置开关控制）
+	// OAuth 账号：应用指纹到请求头（受设置开关控制）；api_key Claude Code
+	// 身份归一化固定启用。
 	if ctEnableFP && ctFingerprint != nil {
 		s.identityService.ApplyFingerprint(req, ctFingerprint)
+	}
+	if ctAPIKeyFingerprint != nil {
+		s.identityService.ApplyFingerprint(req, ctAPIKeyFingerprint)
+		applyClaudeOAuthHeaderDefaults(req)
+		normalizeClaudeCodeSessionHeader(req.Header, body, account.ID)
 	}
 
 	// 确保必要的 headers 存在（保持原始大小写）
@@ -556,13 +576,7 @@ func (s *GatewayService) buildCountTokensRequest(ctx context.Context, c *gin.Con
 	}
 
 	// 同步 X-Claude-Code-Session-Id 头：取 body 中已处理的 metadata.user_id 的 session_id 覆盖
-	if sessionHeader := getHeaderRaw(req.Header, "X-Claude-Code-Session-Id"); sessionHeader != "" {
-		if uid := gjson.GetBytes(body, "metadata.user_id").String(); uid != "" {
-			if parsed := ParseMetadataUserID(uid); parsed != nil {
-				setHeaderRaw(req.Header, "X-Claude-Code-Session-Id", parsed.SessionID)
-			}
-		}
-	}
+	syncClaudeCodeSessionHeader(req.Header, body)
 
 	// 账号级请求头覆写（仅 anthropic/openai api_key 账号启用时生效；OAuth 路径 no-op）
 	account.ApplyHeaderOverrides(req.Header)
