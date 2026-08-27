@@ -92,11 +92,14 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
 		}
 	}
 
+	// 每轮从原始 body 构建（循环内会把改写后的 wireBody 回填 input.Body），身份归一化哈希不得叠加。
+	origBody := input.Body
+
 	var resp *http.Response
 	retryStart := time.Now()
 	for attempt := 1; attempt <= maxRetryAttempts; attempt++ {
 		upstreamCtx, releaseUpstreamCtx := detachStreamUpstreamContext(ctx, input.RequestStream)
-		upstreamReq, wireBody, err := s.buildUpstreamRequestAnthropicAPIKeyPassthrough(upstreamCtx, c, account, input.Body, token)
+		upstreamReq, wireBody, err := s.buildUpstreamRequestAnthropicAPIKeyPassthrough(upstreamCtx, c, account, origBody, token)
 		releaseUpstreamCtx()
 		if err != nil {
 			return nil, err
@@ -337,6 +340,13 @@ func (s *GatewayService) buildUpstreamRequestAnthropicAPIKeyPassthrough(
 		body = sanitized
 	}
 
+	// Claude Code 流量：应用与 OAuth 路径一致的身份归一化（统一指纹 +
+	// metadata.user_id 重写 + billing 版本同步），多用户共享同一 api key 时
+	// 上游只观察到账号级统一身份。固定启用，不随 OAuth 路径的全局转发设置
+	// 开关变化；非 Claude Code 流量保持纯透传。
+	var apiKeyFingerprint *Fingerprint
+	body, apiKeyFingerprint = s.normalizeAPIKeyClaudeCodeIdentity(ctx, c, account, body)
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, targetURL, bytes.NewReader(body))
 	if err != nil {
 		return nil, nil, err
@@ -361,6 +371,15 @@ func (s *GatewayService) buildUpstreamRequestAnthropicAPIKeyPassthrough(
 	req.Header.Del("x-goog-api-key")
 	req.Header.Del("cookie")
 	setAnthropicAPIKeyAuthHeader(req.Header, account, token)
+
+	// 身份归一化：指纹覆写出站环境头（UA + x-stainless-*），补缺失的默认身份头（x-app 等，
+	// 不覆盖已有），并将 CC 会话头收敛为账号级确定性派生（body 有可解析 user_id 时以其为准）。
+	// 指纹为 nil（非 CC 流量或降级透传）时不动会话头。
+	if apiKeyFingerprint != nil {
+		s.identityService.ApplyFingerprint(req, apiKeyFingerprint)
+		applyClaudeOAuthHeaderDefaults(req)
+		normalizeClaudeCodeSessionHeader(req.Header, body, account.ID)
+	}
 
 	if getHeaderRaw(req.Header, "content-type") == "" {
 		setHeaderRaw(req.Header, "content-type", "application/json")

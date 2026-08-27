@@ -48,10 +48,7 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 		targetURL = s.buildCustomRelayURL(validatedURL, "/v1/messages", account)
 	}
 
-	clientHeaders := http.Header{}
-	if c != nil && c.Request != nil {
-		clientHeaders = c.Request.Header
-	}
+	clientHeaders := clientHeadersOf(c)
 
 	// OAuth账号：应用统一指纹和metadata重写（受设置开关控制）
 	var fingerprint *Fingerprint
@@ -82,10 +79,16 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 				}
 			}
 		}
+	} else if account.Type == AccountTypeAPIKey && s.identityService != nil {
+		// Anthropic api_key 账号：Claude Code 流量应用与 OAuth 路径一致的身份归一化
+		// （统一指纹 + metadata.user_id 重写 + billing 版本同步），固定启用；
+		// 非 Claude Code 流量保持透传。
+		body, fingerprint = s.normalizeAPIKeyClaudeCodeIdentity(ctx, c, account, body)
 	}
 
-	// 同步 billing header cc_version 与实际发送的 User-Agent 版本
-	if fingerprint != nil {
+	// 仅 OAuth 路径在此同步 billing header cc_version；api_key 路径已在
+	// normalizeAPIKeyClaudeCodeIdentity 内同步
+	if fingerprint != nil && account.IsOAuth() {
 		body = syncBillingHeaderVersion(body, fingerprint.UserAgent)
 	}
 
@@ -158,7 +161,8 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 	if getHeaderRaw(req.Header, "anthropic-version") == "" {
 		setHeaderRaw(req.Header, "anthropic-version", "2023-06-01")
 	}
-	if tokenType == "oauth" {
+	// OAuth 账号或 api_key Claude Code 归一化生效（fingerprint 非 nil）时补缺失的默认身份头
+	if tokenType == "oauth" || fingerprint != nil {
 		applyClaudeOAuthHeaderDefaults(req)
 	}
 
@@ -177,13 +181,7 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 	}
 
 	// 同步 X-Claude-Code-Session-Id 头：取 body 中已处理的 metadata.user_id 的 session_id 覆盖
-	if sessionHeader := getHeaderRaw(req.Header, "X-Claude-Code-Session-Id"); sessionHeader != "" {
-		if uid := gjson.GetBytes(body, "metadata.user_id").String(); uid != "" {
-			if parsed := ParseMetadataUserID(uid); parsed != nil {
-				setHeaderRaw(req.Header, "X-Claude-Code-Session-Id", parsed.SessionID)
-			}
-		}
-	}
+	syncClaudeCodeSessionHeader(req.Header, body)
 
 	// 账号级请求头覆写（仅 anthropic/openai api_key 账号启用时生效；OAuth 路径 no-op）。
 	// 放在所有 header 逻辑之后，确保配置值对同名头拥有最终决定权。

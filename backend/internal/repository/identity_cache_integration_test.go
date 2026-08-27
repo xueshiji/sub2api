@@ -3,13 +3,11 @@
 package repository
 
 import (
-	"errors"
 	"fmt"
 	"testing"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
-	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 )
@@ -25,8 +23,9 @@ func (s *IdentityCacheSuite) SetupTest() {
 }
 
 func (s *IdentityCacheSuite) TestGetFingerprint_Missing() {
-	_, err := s.cache.GetFingerprint(s.ctx, 1)
-	require.True(s.T(), errors.Is(err, redis.Nil), "expected redis.Nil for missing fingerprint")
+	fp, err := s.cache.GetFingerprint(s.ctx, 1)
+	require.NoError(s.T(), err, "missing fingerprint is a miss, not a failure")
+	require.Nil(s.T(), fp)
 }
 
 func (s *IdentityCacheSuite) TestSetAndGetFingerprint() {
@@ -52,9 +51,9 @@ func (s *IdentityCacheSuite) TestGetFingerprint_JSONCorruption() {
 	fpKey := fmt.Sprintf("%s%d", fingerprintKeyPrefix, 999)
 	require.NoError(s.T(), s.rdb.Set(s.ctx, fpKey, "invalid-json-data", 1*time.Minute).Err(), "Set invalid JSON")
 
-	_, err := s.cache.GetFingerprint(s.ctx, 999)
-	require.Error(s.T(), err, "expected error for corrupted JSON")
-	require.False(s.T(), errors.Is(err, redis.Nil), "expected decoding error, not redis.Nil")
+	fp, err := s.cache.GetFingerprint(s.ctx, 999)
+	require.NoError(s.T(), err, "corrupted value is a miss so the create branch can overwrite it")
+	require.Nil(s.T(), fp)
 }
 
 func (s *IdentityCacheSuite) TestSetFingerprint_Nil() {
