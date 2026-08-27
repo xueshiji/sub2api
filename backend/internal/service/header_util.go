@@ -3,7 +3,18 @@ package service
 import (
 	"net/http"
 	"strings"
+
+	"github.com/gin-gonic/gin"
 )
+
+// clientHeadersOf 返回客户端请求头，c 或 c.Request 为 nil 时返回空 Header，
+// 使调用方无需逐处判空。
+func clientHeadersOf(c *gin.Context) http.Header {
+	if c != nil && c.Request != nil {
+		return c.Request.Header
+	}
+	return http.Header{}
+}
 
 // headerWireCasing 定义每个白名单 header 在真实 Claude CLI 抓包中的准确大小写。
 // Go 的 HTTP server 解析请求时会将所有 header key 转为 Canonical 形式（如 x-app → X-App），

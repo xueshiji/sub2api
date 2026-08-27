@@ -39,6 +39,25 @@ func isClaudeCodeClient(userAgent string, metadataUserID string) bool {
 	return ParseMetadataUserID(metadataUserID) != nil
 }
 
+// isClaudeCodeTraffic 判定请求是否为 Claude Code 流量,判定层级供 Forward/mimicry/identity 共用:
+// context 标志优先,其次 UA + user_id 格式,最后回退 billing attribution block 识别被上游网关代理的 CC 流量。
+// strictFallbackUserID=true 时第三层额外要求 user_id 可解析(归一化路径会改写出站请求,误判代价更高)。
+func isClaudeCodeTraffic(ctx context.Context, ua, metadataUserID string, body []byte, strictFallbackUserID bool) bool {
+	if IsClaudeCodeClient(ctx) {
+		return true
+	}
+	if isClaudeCodeClient(ua, metadataUserID) {
+		return true
+	}
+	if metadataUserID == "" {
+		return false
+	}
+	if strictFallbackUserID && ParseMetadataUserID(metadataUserID) == nil {
+		return false
+	}
+	return systemHasBillingAttributionBlock(body)
+}
+
 func shouldUseClaudeCodeNoopDeltaKeepalive(userAgent string) bool {
 	version := ExtractCLIVersion(userAgent)
 	if version == "" {
