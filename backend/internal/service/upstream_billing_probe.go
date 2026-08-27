@@ -139,6 +139,7 @@ type upstreamBillingProbeResponse struct {
 	PeakStart               *string  `json:"peak_start"`
 	PeakEnd                 *string  `json:"peak_end"`
 	PeakRateMultiplier      *float64 `json:"peak_rate_multiplier"`
+	OffPeakRateMultiplier   *float64 `json:"off_peak_rate_multiplier"`
 	AppliedPeakMultiplier   *float64 `json:"applied_peak_multiplier"`
 	EffectiveRateMultiplier *float64 `json:"effective_rate_multiplier"`
 	Timezone                *string  `json:"timezone"`
@@ -834,6 +835,13 @@ func parseUpstreamBillingProbeResponse(body []byte) (map[string]any, error) {
 		data["peak_rate_multiplier"] = *response.PeakRateMultiplier
 		data["applied_peak_multiplier"] = *response.AppliedPeakMultiplier
 		data["timezone"] = *response.Timezone
+		// 非高峰倍率：新上游携带则校验落盘，老上游缺失时重算按 1.0 回落。
+		if response.OffPeakRateMultiplier != nil {
+			if *response.OffPeakRateMultiplier < 0 || math.IsNaN(*response.OffPeakRateMultiplier) || math.IsInf(*response.OffPeakRateMultiplier, 0) {
+				return nil, fmt.Errorf("invalid off-peak billing multiplier")
+			}
+			data["off_peak_rate_multiplier"] = *response.OffPeakRateMultiplier
+		}
 	}
 	appliedPeak, ok := upstreamBillingPeakMultiplierAt(data, observedAt)
 	if !ok {
@@ -921,17 +929,29 @@ func upstreamBillingPeakMultiplierAt(data map[string]any, now time.Time) (float6
 		startMinute >= endMinute || peakMultiplier < 0 || math.IsNaN(peakMultiplier) || math.IsInf(peakMultiplier, 0) {
 		return 0, false
 	}
+	// 非高峰倍率：缺失按 1.0（老上游快照），存在则须合法。
+	offPeak := 1.0
+	if raw, present := resolveAccountExtraNumber(data, "off_peak_rate_multiplier"); present {
+		if raw < 0 || math.IsNaN(raw) || math.IsInf(raw, 0) {
+			return 0, false
+		}
+		offPeak = raw
+	}
 	location, err := time.LoadLocation(timezoneName)
 	if err != nil {
 		return 0, false
 	}
 
 	local := now.In(location)
+	// 与服务端 Group.PeakMultiplierAt 同口径：周六/周日视为非高峰。
+	if wd := local.Weekday(); wd == time.Saturday || wd == time.Sunday {
+		return offPeak, true
+	}
 	minute := local.Hour()*60 + local.Minute()
 	if minute >= startMinute && minute < endMinute {
 		return peakMultiplier, true
 	}
-	return 1, true
+	return offPeak, true
 }
 
 func equalBillingMultiplier(left, right float64) bool {

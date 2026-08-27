@@ -55,6 +55,11 @@
                     {{ t('payment.planCard.peakRate') }}: {{ subscriptionPeakRateLabel(subscription) }}
                   </span>
                 </div>
+                <PeakModelRules
+                  v-if="subscriptionHasPeakRate(subscription)"
+                  :rules="subscription.group?.peak_model_multipliers"
+                  class="mt-1"
+                />
               </div>
             </div>
             <div class="flex items-center gap-2">
@@ -217,6 +222,7 @@ import type { UserSubscription } from '@/types'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { formatDateTimeToMinute } from '@/utils/format'
+import PeakModelRules from '@/components/common/PeakModelRules.vue'
 import { hasPeakRate, formatPeakRateWindow, serverTimezoneLabel } from '@/utils/peak-rate'
 import { platformBorderClass, platformBadgeClass, platformButtonClass, platformLabel } from '@/utils/platformColors'
 import {

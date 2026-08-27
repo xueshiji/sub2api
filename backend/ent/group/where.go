@@ -105,6 +105,11 @@ func PeakRateMultiplier(v float64) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldPeakRateMultiplier, v))
 }
 
+// OffPeakRateMultiplier applies equality check predicate on the "off_peak_rate_multiplier" field. It's identical to OffPeakRateMultiplierEQ.
+func OffPeakRateMultiplier(v float64) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldOffPeakRateMultiplier, v))
+}
+
 // IsExclusive applies equality check predicate on the "is_exclusive" field. It's identical to IsExclusiveEQ.
 func IsExclusive(v bool) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldIsExclusive, v))
@@ -833,6 +838,56 @@ func PeakRateMultiplierLT(v float64) predicate.Group {
 // PeakRateMultiplierLTE applies the LTE predicate on the "peak_rate_multiplier" field.
 func PeakRateMultiplierLTE(v float64) predicate.Group {
 	return predicate.Group(sql.FieldLTE(FieldPeakRateMultiplier, v))
+}
+
+// OffPeakRateMultiplierEQ applies the EQ predicate on the "off_peak_rate_multiplier" field.
+func OffPeakRateMultiplierEQ(v float64) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldOffPeakRateMultiplier, v))
+}
+
+// OffPeakRateMultiplierNEQ applies the NEQ predicate on the "off_peak_rate_multiplier" field.
+func OffPeakRateMultiplierNEQ(v float64) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldOffPeakRateMultiplier, v))
+}
+
+// OffPeakRateMultiplierIn applies the In predicate on the "off_peak_rate_multiplier" field.
+func OffPeakRateMultiplierIn(vs ...float64) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldOffPeakRateMultiplier, vs...))
+}
+
+// OffPeakRateMultiplierNotIn applies the NotIn predicate on the "off_peak_rate_multiplier" field.
+func OffPeakRateMultiplierNotIn(vs ...float64) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldOffPeakRateMultiplier, vs...))
+}
+
+// OffPeakRateMultiplierGT applies the GT predicate on the "off_peak_rate_multiplier" field.
+func OffPeakRateMultiplierGT(v float64) predicate.Group {
+	return predicate.Group(sql.FieldGT(FieldOffPeakRateMultiplier, v))
+}
+
+// OffPeakRateMultiplierGTE applies the GTE predicate on the "off_peak_rate_multiplier" field.
+func OffPeakRateMultiplierGTE(v float64) predicate.Group {
+	return predicate.Group(sql.FieldGTE(FieldOffPeakRateMultiplier, v))
+}
+
+// OffPeakRateMultiplierLT applies the LT predicate on the "off_peak_rate_multiplier" field.
+func OffPeakRateMultiplierLT(v float64) predicate.Group {
+	return predicate.Group(sql.FieldLT(FieldOffPeakRateMultiplier, v))
+}
+
+// OffPeakRateMultiplierLTE applies the LTE predicate on the "off_peak_rate_multiplier" field.
+func OffPeakRateMultiplierLTE(v float64) predicate.Group {
+	return predicate.Group(sql.FieldLTE(FieldOffPeakRateMultiplier, v))
+}
+
+// PeakModelMultipliersIsNil applies the IsNil predicate on the "peak_model_multipliers" field.
+func PeakModelMultipliersIsNil() predicate.Group {
+	return predicate.Group(sql.FieldIsNull(FieldPeakModelMultipliers))
+}
+
+// PeakModelMultipliersNotNil applies the NotNil predicate on the "peak_model_multipliers" field.
+func PeakModelMultipliersNotNil() predicate.Group {
+	return predicate.Group(sql.FieldNotNull(FieldPeakModelMultipliers))
 }
 
 // IsExclusiveEQ applies the EQ predicate on the "is_exclusive" field.

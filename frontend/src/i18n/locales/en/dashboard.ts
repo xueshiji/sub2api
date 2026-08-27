@@ -590,6 +590,7 @@ export default {
       noModels: 'No models configured for this group',
       noPricing: 'Pricing not configured',
       peakNote: 'Peak hours {window}: billing rate ×{multiplier}',
+      peakModelRulesNote: 'Per-model multipliers (×peak / ×off-peak):',
       longContextDisabledNote: 'Long-context tier pricing is disabled for this group: requests above the threshold are billed at the base tier; official tiers are for reference only'
     },
     table: {

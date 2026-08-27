@@ -36,6 +36,10 @@ const (
 	FieldPeakEnd = "peak_end"
 	// FieldPeakRateMultiplier holds the string denoting the peak_rate_multiplier field in the database.
 	FieldPeakRateMultiplier = "peak_rate_multiplier"
+	// FieldOffPeakRateMultiplier holds the string denoting the off_peak_rate_multiplier field in the database.
+	FieldOffPeakRateMultiplier = "off_peak_rate_multiplier"
+	// FieldPeakModelMultipliers holds the string denoting the peak_model_multipliers field in the database.
+	FieldPeakModelMultipliers = "peak_model_multipliers"
 	// FieldIsExclusive holds the string denoting the is_exclusive field in the database.
 	FieldIsExclusive = "is_exclusive"
 	// FieldStatus holds the string denoting the status field in the database.
@@ -231,6 +235,8 @@ var Columns = []string{
 	FieldPeakStart,
 	FieldPeakEnd,
 	FieldPeakRateMultiplier,
+	FieldOffPeakRateMultiplier,
+	FieldPeakModelMultipliers,
 	FieldIsExclusive,
 	FieldStatus,
 	FieldDuplicateOperationID,
@@ -337,6 +343,8 @@ var (
 	PeakEndValidator func(string) error
 	// DefaultPeakRateMultiplier holds the default value on creation for the "peak_rate_multiplier" field.
 	DefaultPeakRateMultiplier float64
+	// DefaultOffPeakRateMultiplier holds the default value on creation for the "off_peak_rate_multiplier" field.
+	DefaultOffPeakRateMultiplier float64
 	// DefaultIsExclusive holds the default value on creation for the "is_exclusive" field.
 	DefaultIsExclusive bool
 	// DefaultStatus holds the default value on creation for the "status" field.
@@ -479,6 +487,11 @@ func ByPeakEnd(opts ...sql.OrderTermOption) OrderOption {
 // ByPeakRateMultiplier orders the results by the peak_rate_multiplier field.
 func ByPeakRateMultiplier(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldPeakRateMultiplier, opts...).ToFunc()
+}
+
+// ByOffPeakRateMultiplier orders the results by the off_peak_rate_multiplier field.
+func ByOffPeakRateMultiplier(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldOffPeakRateMultiplier, opts...).ToFunc()
 }
 
 // ByIsExclusive orders the results by the is_exclusive field.

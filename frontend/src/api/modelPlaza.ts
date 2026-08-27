@@ -69,6 +69,8 @@ export interface ModelPlazaGroup {
   peak_start: string
   peak_end: string
   peak_rate_multiplier: number
+  off_peak_rate_multiplier: number
+  peak_model_multipliers?: Record<string, { peak: number; off_peak: number }>
   is_exclusive: boolean
   /** 生图独立倍率：true 时图片计费模型的实付倍率取 image_rate_multiplier，不取分组/专属倍率。 */
   image_rate_independent: boolean

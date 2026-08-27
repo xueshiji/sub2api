@@ -44,7 +44,7 @@
             :key="subscription.id"
             class="border-b border-gray-50 p-3 last:border-b-0 dark:border-dark-700/50"
           >
-            <div class="mb-2 flex items-center justify-between">
+            <div class="flex items-center justify-between">
               <span class="text-sm font-medium text-gray-900 dark:text-white">
                 {{ subscription.group?.name || `Group #${subscription.group_id}` }}
               </span>
@@ -57,8 +57,22 @@
               </span>
             </div>
 
+            <!-- Rate info -->
+            <div class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
+              <div class="flex flex-wrap items-center gap-x-2 text-[10px] text-gray-500 dark:text-dark-400">
+                <span>{{ t('payment.planCard.rate') }} ×{{ subscription.group?.rate_multiplier ?? 1 }}</span>
+                <span v-if="peakRateLabel(subscription)" class="text-amber-700 dark:text-amber-300">
+                  {{ t('payment.planCard.peakRate') }}: {{ peakRateLabel(subscription) }}
+                </span>
+              </div>
+              <PeakModelRules
+                v-if="hasPeakRate(subscription.group)"
+                :rules="subscription.group?.peak_model_multipliers"
+              />
+            </div>
+
             <!-- Progress bars or Unlimited badge -->
-            <div class="space-y-1.5">
+            <div class="mt-2 space-y-1.5">
               <!-- Unlimited subscription badge -->
               <div
                 v-if="isUnlimited(subscription)"
@@ -142,8 +156,10 @@
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Icon from '@/components/icons/Icon.vue'
-import { useSubscriptionStore } from '@/stores'
+import PeakModelRules from '@/components/common/PeakModelRules.vue'
+import { useSubscriptionStore, useAppStore } from '@/stores'
 import type { UserSubscription } from '@/types'
+import { hasPeakRate, formatPeakRateWindow, serverTimezoneLabel } from '@/utils/peak-rate'
 import {
   hasWindowLimit,
   windowPercentage,
@@ -157,6 +173,7 @@ import {
 const { t } = useI18n()
 
 const subscriptionStore = useSubscriptionStore()
+const appStore = useAppStore()
 
 const containerRef = ref<HTMLElement | null>(null)
 const tooltipOpen = ref(false)
@@ -173,6 +190,12 @@ const displaySubscriptions = computed(() => {
     return bMax - aMax
   })
 })
+
+function peakRateLabel(sub: UserSubscription): string {
+  const group = sub.group
+  if (!hasPeakRate(group)) return ''
+  return formatPeakRateWindow(group, serverTimezoneLabel(appStore.cachedPublicSettings?.server_utc_offset))
+}
 
 function getProgressDotClass(sub: UserSubscription): string {
   // Unlimited subscriptions get a special color

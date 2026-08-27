@@ -181,9 +181,13 @@ const currentEffectiveRate = computed(() => {
   const minute = minuteInTimeZone(props.now, billing.timezone)
   const peak = billing.peak_rate_multiplier
   if (start == null || end == null || minute == null || start >= end || typeof peak !== 'number' || !Number.isFinite(peak) || peak < 0) return null
-  // 高峰仅周一至周五生效，周末不叠加
+  // 非高峰倍率：工作日窗口外与周末生效；老上游快照缺失该字段按 1（不叠加）。
+  const offPeak = billing.off_peak_rate_multiplier
+  const offPeakFactor =
+    typeof offPeak === 'number' && Number.isFinite(offPeak) && offPeak >= 0 ? offPeak : 1
+  // 高峰仅周一至周五生效，周末与非高峰时段一致按非高峰倍率计费
   const inPeakWindow = minute >= start && minute < end && !isWeekendInTimeZone(props.now, billing.timezone)
-  const value = inPeakWindow ? base * peak : base
+  const value = inPeakWindow ? base * peak : base * offPeakFactor
   return Number.isFinite(value) ? value : null
 })
 const lastDetectedRate = computed(() => {

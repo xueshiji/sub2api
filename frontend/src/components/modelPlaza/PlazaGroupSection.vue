@@ -16,6 +16,8 @@
           :peak-start="group.peak_start"
           :peak-end="group.peak_end"
           :peak-rate-multiplier="group.peak_rate_multiplier"
+          :off-peak-rate-multiplier="group.off_peak_rate_multiplier"
+          :peak-model-multipliers="group.peak_model_multipliers"
           always-show-rate
         />
         <span
@@ -41,6 +43,20 @@
       >
         <Icon name="clock" size="xs" class="h-3 w-3" />
         {{ peakNote }}
+      </p>
+      <p
+        v-if="peakModelNote"
+        class="mt-1.5 inline-flex flex-wrap items-center gap-x-1 gap-y-0.5 text-xs text-amber-600 dark:text-amber-400"
+      >
+        <Icon name="infoCircle" size="xs" class="h-3 w-3" />
+        {{ t('modelPlaza.detail.peakModelRulesNote') }}
+        <code
+          v-for="(rule, pattern) in group.peak_model_multipliers"
+          :key="pattern"
+          class="rounded bg-amber-50 px-1 py-0.5 font-mono text-[10px] dark:bg-amber-900/20"
+        >
+          {{ pattern }} ×{{ rule.peak }} / ×{{ rule.off_peak }}
+        </code>
       </p>
       <p
         v-if="longContextNote"
@@ -97,6 +113,11 @@ const peakWindow = computed(() => {
     props.group,
     serverTimezoneLabel(appStore.cachedPublicSettings?.server_utc_offset)
   )
+})
+
+const peakModelNote = computed(() => {
+  const rules = props.group.peak_model_multipliers
+  return hasPeakRate(props.group) && rules && Object.keys(rules).length > 0
 })
 
 const peakNote = computed(() => {

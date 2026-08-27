@@ -162,6 +162,26 @@ func (_c *GroupCreate) SetNillablePeakRateMultiplier(v *float64) *GroupCreate {
 	return _c
 }
 
+// SetOffPeakRateMultiplier sets the "off_peak_rate_multiplier" field.
+func (_c *GroupCreate) SetOffPeakRateMultiplier(v float64) *GroupCreate {
+	_c.mutation.SetOffPeakRateMultiplier(v)
+	return _c
+}
+
+// SetNillableOffPeakRateMultiplier sets the "off_peak_rate_multiplier" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableOffPeakRateMultiplier(v *float64) *GroupCreate {
+	if v != nil {
+		_c.SetOffPeakRateMultiplier(*v)
+	}
+	return _c
+}
+
+// SetPeakModelMultipliers sets the "peak_model_multipliers" field.
+func (_c *GroupCreate) SetPeakModelMultipliers(v map[string]domain.PeakModelMultiplierRule) *GroupCreate {
+	_c.mutation.SetPeakModelMultipliers(v)
+	return _c
+}
+
 // SetIsExclusive sets the "is_exclusive" field.
 func (_c *GroupCreate) SetIsExclusive(v bool) *GroupCreate {
 	_c.mutation.SetIsExclusive(v)
@@ -1053,6 +1073,10 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultPeakRateMultiplier
 		_c.mutation.SetPeakRateMultiplier(v)
 	}
+	if _, ok := _c.mutation.OffPeakRateMultiplier(); !ok {
+		v := group.DefaultOffPeakRateMultiplier
+		_c.mutation.SetOffPeakRateMultiplier(v)
+	}
 	if _, ok := _c.mutation.IsExclusive(); !ok {
 		v := group.DefaultIsExclusive
 		_c.mutation.SetIsExclusive(v)
@@ -1224,6 +1248,9 @@ func (_c *GroupCreate) check() error {
 	}
 	if _, ok := _c.mutation.PeakRateMultiplier(); !ok {
 		return &ValidationError{Name: "peak_rate_multiplier", err: errors.New(`ent: missing required field "Group.peak_rate_multiplier"`)}
+	}
+	if _, ok := _c.mutation.OffPeakRateMultiplier(); !ok {
+		return &ValidationError{Name: "off_peak_rate_multiplier", err: errors.New(`ent: missing required field "Group.off_peak_rate_multiplier"`)}
 	}
 	if _, ok := _c.mutation.IsExclusive(); !ok {
 		return &ValidationError{Name: "is_exclusive", err: errors.New(`ent: missing required field "Group.is_exclusive"`)}
@@ -1437,6 +1464,14 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.PeakRateMultiplier(); ok {
 		_spec.SetField(group.FieldPeakRateMultiplier, field.TypeFloat64, value)
 		_node.PeakRateMultiplier = value
+	}
+	if value, ok := _c.mutation.OffPeakRateMultiplier(); ok {
+		_spec.SetField(group.FieldOffPeakRateMultiplier, field.TypeFloat64, value)
+		_node.OffPeakRateMultiplier = value
+	}
+	if value, ok := _c.mutation.PeakModelMultipliers(); ok {
+		_spec.SetField(group.FieldPeakModelMultipliers, field.TypeJSON, value)
+		_node.PeakModelMultipliers = value
 	}
 	if value, ok := _c.mutation.IsExclusive(); ok {
 		_spec.SetField(group.FieldIsExclusive, field.TypeBool, value)
@@ -1943,6 +1978,42 @@ func (u *GroupUpsert) UpdatePeakRateMultiplier() *GroupUpsert {
 // AddPeakRateMultiplier adds v to the "peak_rate_multiplier" field.
 func (u *GroupUpsert) AddPeakRateMultiplier(v float64) *GroupUpsert {
 	u.Add(group.FieldPeakRateMultiplier, v)
+	return u
+}
+
+// SetOffPeakRateMultiplier sets the "off_peak_rate_multiplier" field.
+func (u *GroupUpsert) SetOffPeakRateMultiplier(v float64) *GroupUpsert {
+	u.Set(group.FieldOffPeakRateMultiplier, v)
+	return u
+}
+
+// UpdateOffPeakRateMultiplier sets the "off_peak_rate_multiplier" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateOffPeakRateMultiplier() *GroupUpsert {
+	u.SetExcluded(group.FieldOffPeakRateMultiplier)
+	return u
+}
+
+// AddOffPeakRateMultiplier adds v to the "off_peak_rate_multiplier" field.
+func (u *GroupUpsert) AddOffPeakRateMultiplier(v float64) *GroupUpsert {
+	u.Add(group.FieldOffPeakRateMultiplier, v)
+	return u
+}
+
+// SetPeakModelMultipliers sets the "peak_model_multipliers" field.
+func (u *GroupUpsert) SetPeakModelMultipliers(v map[string]domain.PeakModelMultiplierRule) *GroupUpsert {
+	u.Set(group.FieldPeakModelMultipliers, v)
+	return u
+}
+
+// UpdatePeakModelMultipliers sets the "peak_model_multipliers" field to the value that was provided on create.
+func (u *GroupUpsert) UpdatePeakModelMultipliers() *GroupUpsert {
+	u.SetExcluded(group.FieldPeakModelMultipliers)
+	return u
+}
+
+// ClearPeakModelMultipliers clears the value of the "peak_model_multipliers" field.
+func (u *GroupUpsert) ClearPeakModelMultipliers() *GroupUpsert {
+	u.SetNull(group.FieldPeakModelMultipliers)
 	return u
 }
 
@@ -3093,6 +3164,48 @@ func (u *GroupUpsertOne) AddPeakRateMultiplier(v float64) *GroupUpsertOne {
 func (u *GroupUpsertOne) UpdatePeakRateMultiplier() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdatePeakRateMultiplier()
+	})
+}
+
+// SetOffPeakRateMultiplier sets the "off_peak_rate_multiplier" field.
+func (u *GroupUpsertOne) SetOffPeakRateMultiplier(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetOffPeakRateMultiplier(v)
+	})
+}
+
+// AddOffPeakRateMultiplier adds v to the "off_peak_rate_multiplier" field.
+func (u *GroupUpsertOne) AddOffPeakRateMultiplier(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddOffPeakRateMultiplier(v)
+	})
+}
+
+// UpdateOffPeakRateMultiplier sets the "off_peak_rate_multiplier" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateOffPeakRateMultiplier() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateOffPeakRateMultiplier()
+	})
+}
+
+// SetPeakModelMultipliers sets the "peak_model_multipliers" field.
+func (u *GroupUpsertOne) SetPeakModelMultipliers(v map[string]domain.PeakModelMultiplierRule) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetPeakModelMultipliers(v)
+	})
+}
+
+// UpdatePeakModelMultipliers sets the "peak_model_multipliers" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdatePeakModelMultipliers() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdatePeakModelMultipliers()
+	})
+}
+
+// ClearPeakModelMultipliers clears the value of the "peak_model_multipliers" field.
+func (u *GroupUpsertOne) ClearPeakModelMultipliers() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearPeakModelMultipliers()
 	})
 }
 
@@ -4567,6 +4680,48 @@ func (u *GroupUpsertBulk) AddPeakRateMultiplier(v float64) *GroupUpsertBulk {
 func (u *GroupUpsertBulk) UpdatePeakRateMultiplier() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdatePeakRateMultiplier()
+	})
+}
+
+// SetOffPeakRateMultiplier sets the "off_peak_rate_multiplier" field.
+func (u *GroupUpsertBulk) SetOffPeakRateMultiplier(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetOffPeakRateMultiplier(v)
+	})
+}
+
+// AddOffPeakRateMultiplier adds v to the "off_peak_rate_multiplier" field.
+func (u *GroupUpsertBulk) AddOffPeakRateMultiplier(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddOffPeakRateMultiplier(v)
+	})
+}
+
+// UpdateOffPeakRateMultiplier sets the "off_peak_rate_multiplier" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateOffPeakRateMultiplier() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateOffPeakRateMultiplier()
+	})
+}
+
+// SetPeakModelMultipliers sets the "peak_model_multipliers" field.
+func (u *GroupUpsertBulk) SetPeakModelMultipliers(v map[string]domain.PeakModelMultiplierRule) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetPeakModelMultipliers(v)
+	})
+}
+
+// UpdatePeakModelMultipliers sets the "peak_model_multipliers" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdatePeakModelMultipliers() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdatePeakModelMultipliers()
+	})
+}
+
+// ClearPeakModelMultipliers clears the value of the "peak_model_multipliers" field.
+func (u *GroupUpsertBulk) ClearPeakModelMultipliers() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearPeakModelMultipliers()
 	})
 }
 

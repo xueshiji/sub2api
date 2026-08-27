@@ -78,6 +78,8 @@ interface Props {
   peakStart?: string
   peakEnd?: string
   peakRateMultiplier?: number
+  offPeakRateMultiplier?: number
+  peakModelMultipliers?: Record<string, { peak: number; off_peak: number }> | null
   description?: string | null
   selected?: boolean
   showCheckmark?: boolean
@@ -113,7 +115,9 @@ const peakRateText = computed(() => {
       peak_rate_enabled: props.peakRateEnabled,
       peak_start: props.peakStart,
       peak_end: props.peakEnd,
-      peak_rate_multiplier: props.peakRateMultiplier
+      peak_rate_multiplier: props.peakRateMultiplier,
+      off_peak_rate_multiplier: props.offPeakRateMultiplier,
+      peak_model_multipliers: props.peakModelMultipliers
     },
     serverTimezoneLabel(appStore.cachedPublicSettings?.server_utc_offset)
   )

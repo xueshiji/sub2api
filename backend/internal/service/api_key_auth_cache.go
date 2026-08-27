@@ -117,13 +117,16 @@ type APIKeyAuthGroupSnapshot struct {
 	// ReasoningEffortMappings rewrites explicit effort values before the ceiling.
 	ReasoningEffortMappings []ReasoningEffortMapping `json:"reasoning_effort_mappings"`
 
-	// 高峰时段倍率：PeakRateEnabled 为 true 且请求时刻处于 [PeakStart, PeakEnd) 时，
-	// token 计费倍率额外乘以 PeakRateMultiplier（详见 Group.PeakMultiplierAt）。
+	// 高峰时段倍率：PeakRateEnabled 为 true 时，工作日 [PeakStart, PeakEnd) 内按
+	// PeakModelMultipliers 匹配请求模型（未命中回落 PeakRateMultiplier），窗口外与
+	// 周末乘以 OffPeakMultiplier（详见 Group.PeakMultiplierAt）。
 	// 必须随快照缓存，否则扣费路径拿到的 apiKey.Group 缺字段、高峰倍率失效。
-	PeakRateEnabled    bool    `json:"peak_rate_enabled"`
-	PeakStart          string  `json:"peak_start"`
-	PeakEnd            string  `json:"peak_end"`
-	PeakRateMultiplier float64 `json:"peak_rate_multiplier"`
+	PeakRateEnabled      bool                               `json:"peak_rate_enabled"`
+	PeakStart            string                             `json:"peak_start"`
+	PeakEnd              string                             `json:"peak_end"`
+	PeakRateMultiplier   float64                            `json:"peak_rate_multiplier"`
+	OffPeakMultiplier    float64                            `json:"off_peak_rate_multiplier"`
+	PeakModelMultipliers map[string]PeakModelMultiplierRule `json:"peak_model_multipliers,omitempty"`
 
 	// 分组利润控制：调度准入门在直连热路径上读的就是这份快照——门解析
 	// （resolveOpenAIProfitControlGate / resolveProfitControlGroup）优先取

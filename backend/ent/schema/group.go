@@ -63,6 +63,14 @@ func (Group) Fields() []ent.Field {
 			SchemaType(map[string]string{dialect.Postgres: "decimal(10,4)"}).
 			Default(1.0).
 			Comment("高峰时段叠加倍率，仅在 peak_rate_enabled 且处于 [peak_start, peak_end) 时乘入文本倍率"),
+		field.Float("off_peak_rate_multiplier").
+			SchemaType(map[string]string{dialect.Postgres: "decimal(10,4)"}).
+			Default(1.0).
+			Comment("非高峰时段叠加倍率（工作日窗口外与周末），仅在 peak_rate_enabled 时生效；1.0 保持既有行为"),
+		field.JSON("peak_model_multipliers", map[string]domain.PeakModelMultiplierRule{}).
+			Optional().
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
+			Comment("分模型分时倍率，key 为模型名或末尾 * 通配符；命中规则的 peak/off_peak 优先于分组默认倍率"),
 		field.Bool("is_exclusive").
 			Default(false),
 		field.String("status").

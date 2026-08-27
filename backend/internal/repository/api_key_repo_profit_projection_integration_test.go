@@ -25,6 +25,8 @@ func TestGetByKeyForAuthCarriesProfitControlProjection(t *testing.T) {
 		Name:                 fmt.Sprintf("profit-proj-group-%d", suffix),
 		Platform:             service.PlatformOpenAI,
 		RateMultiplier:       0.06,
+		OffPeakMultiplier:    0.5,
+		PeakModelMultipliers: map[string]service.PeakModelMultiplierRule{"gpt-4o": {Peak: 2.5, OffPeak: 0.5}},
 		ProfitControlEnabled: true,
 		ProfitMinMargin:      0.2,
 		ProfitSafetyBuffer:   0.05,
@@ -54,6 +56,8 @@ func TestGetByKeyForAuthCarriesProfitControlProjection(t *testing.T) {
 
 	require.Equal(t, service.PlatformOpenAI, got.Group.Platform)
 	require.InDelta(t, 0.06, got.Group.RateMultiplier, 1e-9)
+	require.InDelta(t, 0.5, got.Group.OffPeakMultiplier, 1e-9, "off_peak_rate_multiplier 必须进入认证投影（投影漏列会让非高峰倍率静默失效）")
+	require.Equal(t, service.PeakModelMultiplierRule{Peak: 2.5, OffPeak: 0.5}, got.Group.PeakModelMultipliers["gpt-4o"], "peak_model_multipliers 必须进入认证投影")
 	require.True(t, got.Group.ProfitControlEnabled, "profit_control_enabled 必须进入认证投影（投影漏列会让门静默失效）")
 	require.InDelta(t, 0.2, got.Group.ProfitMinMargin, 1e-9)
 	require.InDelta(t, 0.05, got.Group.ProfitSafetyBuffer, 1e-9)

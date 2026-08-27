@@ -1279,7 +1279,7 @@
           </p>
           <div
             v-if="createForm.peak_rate_enabled"
-            class="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3"
+            class="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4"
           >
             <div>
               <label class="input-label">{{ t("admin.groups.peakRate.peakStart") }}</label>
@@ -1308,6 +1308,77 @@
                 placeholder="1"
                 :title="t('admin.groups.peakRate.multiplierHint')"
               />
+            </div>
+            <div>
+              <label class="input-label">{{ t("admin.groups.peakRate.offPeakMultiplier") }}</label>
+              <input
+                v-model.number="createForm.off_peak_rate_multiplier"
+                type="number"
+                step="0.001"
+                min="0"
+                class="input"
+                placeholder="1"
+                :title="t('admin.groups.peakRate.offPeakHint')"
+              />
+            </div>
+          </div>
+          <div v-if="createForm.peak_rate_enabled" class="mb-4">
+            <p class="text-sm font-medium text-gray-700 dark:text-gray-300">
+              {{ t("admin.groups.peakRate.modelMultipliersTitle") }}
+            </p>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t("admin.groups.peakRate.modelMultipliersHint") }}
+            </p>
+            <div class="mt-2 space-y-2">
+              <div class="flex items-center gap-2 text-xs text-gray-400 dark:text-gray-500">
+                <span class="flex-1">{{ t("admin.groups.peakRate.modelPattern") }}</span>
+                <span class="w-24 text-center">{{ t("admin.groups.peakRate.peakMultiplier") }}</span>
+                <span class="w-24 text-center">{{ t("admin.groups.peakRate.offPeakMultiplier") }}</span>
+                <span class="w-8" />
+              </div>
+              <div
+                v-for="(rule, index) in createPeakModelRules"
+                :key="index"
+                class="flex items-center gap-2"
+              >
+                <input
+                  v-model="rule.pattern"
+                  type="text"
+                  class="input flex-1 font-mono text-xs"
+                  placeholder="claude-opus-*"
+                />
+                <input
+                  v-model.number="rule.peak"
+                  type="number"
+                  step="0.001"
+                  min="0"
+                  class="input w-24"
+                  :title="t('admin.groups.peakRate.multiplierHint')"
+                />
+                <input
+                  v-model.number="rule.offPeak"
+                  type="number"
+                  step="0.001"
+                  min="0"
+                  class="input w-24"
+                  :title="t('admin.groups.peakRate.offPeakHint')"
+                />
+                <button
+                  type="button"
+                  class="rounded p-1.5 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400"
+                  @click="createPeakModelRules.splice(index, 1)"
+                >
+                  <Icon name="trash" size="sm" />
+                </button>
+              </div>
+              <button
+                type="button"
+                class="btn btn-secondary"
+                @click="createPeakModelRules.push({ pattern: '', peak: 1, offPeak: 1 })"
+              >
+                <Icon name="plus" size="sm" class="mr-1" />
+                {{ t("admin.groups.peakRate.addModelRule") }}
+              </button>
             </div>
           </div>
         </div>
@@ -3066,7 +3137,7 @@
           </p>
           <div
             v-if="editForm.peak_rate_enabled"
-            class="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3"
+            class="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4"
           >
             <div>
               <label class="input-label">{{ t("admin.groups.peakRate.peakStart") }}</label>
@@ -3095,6 +3166,77 @@
                 placeholder="1"
                 :title="t('admin.groups.peakRate.multiplierHint')"
               />
+            </div>
+            <div>
+              <label class="input-label">{{ t("admin.groups.peakRate.offPeakMultiplier") }}</label>
+              <input
+                v-model.number="editForm.off_peak_rate_multiplier"
+                type="number"
+                step="0.001"
+                min="0"
+                class="input"
+                placeholder="1"
+                :title="t('admin.groups.peakRate.offPeakHint')"
+              />
+            </div>
+          </div>
+          <div v-if="editForm.peak_rate_enabled" class="mb-4">
+            <p class="text-sm font-medium text-gray-700 dark:text-gray-300">
+              {{ t("admin.groups.peakRate.modelMultipliersTitle") }}
+            </p>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t("admin.groups.peakRate.modelMultipliersHint") }}
+            </p>
+            <div class="mt-2 space-y-2">
+              <div class="flex items-center gap-2 text-xs text-gray-400 dark:text-gray-500">
+                <span class="flex-1">{{ t("admin.groups.peakRate.modelPattern") }}</span>
+                <span class="w-24 text-center">{{ t("admin.groups.peakRate.peakMultiplier") }}</span>
+                <span class="w-24 text-center">{{ t("admin.groups.peakRate.offPeakMultiplier") }}</span>
+                <span class="w-8" />
+              </div>
+              <div
+                v-for="(rule, index) in editPeakModelRules"
+                :key="index"
+                class="flex items-center gap-2"
+              >
+                <input
+                  v-model="rule.pattern"
+                  type="text"
+                  class="input flex-1 font-mono text-xs"
+                  placeholder="claude-opus-*"
+                />
+                <input
+                  v-model.number="rule.peak"
+                  type="number"
+                  step="0.001"
+                  min="0"
+                  class="input w-24"
+                  :title="t('admin.groups.peakRate.multiplierHint')"
+                />
+                <input
+                  v-model.number="rule.offPeak"
+                  type="number"
+                  step="0.001"
+                  min="0"
+                  class="input w-24"
+                  :title="t('admin.groups.peakRate.offPeakHint')"
+                />
+                <button
+                  type="button"
+                  class="rounded p-1.5 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400"
+                  @click="editPeakModelRules.splice(index, 1)"
+                >
+                  <Icon name="trash" size="sm" />
+                </button>
+              </div>
+              <button
+                type="button"
+                class="btn btn-secondary"
+                @click="editPeakModelRules.push({ pattern: '', peak: 1, offPeak: 1 })"
+              >
+                <Icon name="plus" size="sm" class="mr-1" />
+                {{ t("admin.groups.peakRate.addModelRule") }}
+              </button>
             </div>
           </div>
         </div>
@@ -5241,6 +5383,7 @@ const createForm = reactive({
   peak_start: "",
   peak_end: "",
   peak_rate_multiplier: 1.0,
+  off_peak_rate_multiplier: 1.0,
   // 分组利润控制（五个 token 平台）；界面按百分比输入，提交时转小数
   profit_control_enabled: false,
   profit_min_margin_percent: 0,
@@ -5290,6 +5433,47 @@ const createModelRoutingRules = ref<ModelRoutingRule[]>([]);
 
 // 编辑表单的模型路由规则
 const editModelRoutingRules = ref<ModelRoutingRule[]>([]);
+
+// 分模型分时倍率规则（pattern 支持末尾 * 通配符；peak/offPeak 命中时优先于分组默认）
+interface PeakModelRule {
+  pattern: string;
+  peak: number;
+  offPeak: number;
+}
+
+const createPeakModelRules = ref<PeakModelRule[]>([]);
+const editPeakModelRules = ref<PeakModelRule[]>([]);
+
+const peakModelRulesFromAPI = (
+  value: Record<string, { peak: number; off_peak: number }> | null | undefined,
+): PeakModelRule[] =>
+  value
+    ? Object.entries(value).map(([pattern, rule]) => ({
+        pattern,
+        peak: rule.peak,
+        offPeak: rule.off_peak,
+      }))
+    : [];
+
+// 返回对象（含空对象）：空对象表示清空全部规则，缺省（undefined）才表示不修改。
+const peakModelRulesToAPI = (
+  rules: PeakModelRule[],
+): Record<string, { peak: number; off_peak: number }> => {
+  const out: Record<string, { peak: number; off_peak: number }> = {};
+  for (const rule of rules) {
+    const pattern = rule.pattern.trim();
+    if (
+      !pattern ||
+      !Number.isFinite(rule.peak) ||
+      rule.peak < 0 ||
+      !Number.isFinite(rule.offPeak) ||
+      rule.offPeak < 0
+    )
+      continue;
+    out[pattern] = { peak: rule.peak, off_peak: rule.offPeak };
+  }
+  return out;
+};
 
 // 规则对象稳定 key（避免使用 index 导致状态错位）
 const resolveCreateRuleKey =
@@ -5605,6 +5789,7 @@ const editForm = reactive({
   peak_start: "",
   peak_end: "",
   peak_rate_multiplier: 1.0,
+  off_peak_rate_multiplier: 1.0,
   // 分组利润控制（五个 token 平台）；界面按百分比输入，提交时转小数
   profit_control_enabled: false,
   profit_min_margin_percent: 0,
@@ -5654,6 +5839,7 @@ type ImagePricingFormState = {
   peak_start: string;
   peak_end: string;
   peak_rate_multiplier: number;
+  off_peak_rate_multiplier: number;
 };
 
 type VideoPricingFormState = {
@@ -6066,6 +6252,8 @@ const closeCreateModal = () => {
   createForm.peak_start = "";
   createForm.peak_end = "";
   createForm.peak_rate_multiplier = 1.0;
+  createForm.off_peak_rate_multiplier = 1.0;
+  createPeakModelRules.value = [];
   createForm.profit_control_enabled = false;
   createForm.profit_min_margin_percent = 0;
   createForm.profit_safety_buffer_percent = 0;
@@ -6156,6 +6344,7 @@ const handleCreateGroup = async () => {
     // 构建请求数据，包含模型路由配置
     const requestData = {
       ...createGroupForm,
+      peak_model_multipliers: undefined as Record<string, { peak: number; off_peak: number }> | undefined,
       model_pricing: groupPricingToAPI(
         createForm.model_pricing,
         createForm.platform,
@@ -6263,6 +6452,12 @@ const handleCreateGroup = async () => {
     requestData.peak_rate_multiplier = normalizeRateMultiplier(
       createForm.peak_rate_multiplier,
     );
+    requestData.off_peak_rate_multiplier = normalizeRateMultiplier(
+      createForm.off_peak_rate_multiplier,
+    );
+    requestData.peak_model_multipliers = peakModelRulesToAPI(
+      createPeakModelRules.value,
+    );
     await adminAPI.groups.create(requestData);
     appStore.showSuccess(t("admin.groups.groupCreated"));
     closeCreateModal();
@@ -6328,6 +6523,8 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.peak_start = group.peak_start ?? "";
   editForm.peak_end = group.peak_end ?? "";
   editForm.peak_rate_multiplier = group.peak_rate_multiplier ?? 1.0;
+  editForm.off_peak_rate_multiplier = group.off_peak_rate_multiplier ?? 1.0;
+  editPeakModelRules.value = peakModelRulesFromAPI(group.peak_model_multipliers);
   editForm.profit_control_enabled = group.profit_control_enabled ?? false;
   editForm.profit_min_margin_percent = decimalToPercent(
     group.profit_min_margin ?? 0,
@@ -6395,6 +6592,8 @@ const closeEditModal = () => {
   editForm.peak_start = "";
   editForm.peak_end = "";
   editForm.peak_rate_multiplier = 1.0;
+  editForm.off_peak_rate_multiplier = 1.0;
+  editPeakModelRules.value = [];
   editForm.profit_control_enabled = false;
   editForm.profit_min_margin_percent = 0;
   editForm.profit_safety_buffer_percent = 0;
@@ -6438,6 +6637,7 @@ const handleUpdateGroup = async () => {
     // 转换 fallback_group_id: null -> 0 (后端使用 0 表示清除)
     const payload = {
       ...editForm,
+      peak_model_multipliers: undefined as Record<string, { peak: number; off_peak: number }> | undefined,
       model_pricing: groupPricingToAPI(
         editForm.model_pricing,
         editForm.platform,
@@ -6552,6 +6752,12 @@ const handleUpdateGroup = async () => {
     payload.peak_end = editForm.peak_end;
     payload.peak_rate_multiplier = normalizeRateMultiplier(
       editForm.peak_rate_multiplier,
+    );
+    payload.off_peak_rate_multiplier = normalizeRateMultiplier(
+      editForm.off_peak_rate_multiplier,
+    );
+    payload.peak_model_multipliers = peakModelRulesToAPI(
+      editPeakModelRules.value,
     );
     await adminAPI.groups.update(editingGroup.value.id, payload);
     appStore.showSuccess(t("admin.groups.groupUpdated"));
@@ -6848,6 +7054,8 @@ watch(
       createForm.peak_start = "";
       createForm.peak_end = "";
       createForm.peak_rate_multiplier = 1.0;
+      createForm.off_peak_rate_multiplier = 1.0;
+      createPeakModelRules.value = [];
     }
   },
 );
@@ -6873,6 +7081,8 @@ watch(
       editForm.peak_start = "";
       editForm.peak_end = "";
       editForm.peak_rate_multiplier = 1.0;
+      editForm.off_peak_rate_multiplier = 1.0;
+      editPeakModelRules.value = [];
     }
   },
 );

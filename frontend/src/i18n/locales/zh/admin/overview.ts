@@ -1039,7 +1039,14 @@ export default {
         peakMultiplier: '高峰倍率',
         multiplierHint: '作用于 token 计费倍率；token 计费的图片 token 同样适用，0 表示高峰 token 请求按 0 倍计费',
         tokenQuotaNote: '提示：高峰倍率对 token 型订阅同样生效——高峰时段的 token 配额消耗会按此倍率加快（如 1.5 倍时，1000 个实际 token 计为 1500 配额）。',
-        weekendNote: '高峰倍率仅周一至周五生效，周末（周六/周日）不叠加。'
+        weekendNote: '高峰倍率仅周一至周五生效，周末（周六/周日）与非高峰时段一致按非高峰倍率计费。',
+        offPeakMultiplier: '非高峰倍率',
+        offPeakHint: '工作日高峰窗口之外与周末生效；1 为不叠加（默认）。',
+        modelMultipliersTitle: '分模型高峰倍率',
+        modelMultipliersHint: '按请求模型匹配：精确名优先，其次最长前缀通配符（如 claude-opus-*）；命中规则同时定义该模型的高峰与非高峰倍率，未命中回落分组默认。',
+        modelPattern: '模型 / 模式',
+        addModelRule: '添加规则',
+        peakModelMultiplier: '高峰倍率'
       },
       profitControl: {
         enable: '启用利润控制',

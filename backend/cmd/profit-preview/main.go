@@ -19,18 +19,20 @@ import (
 )
 
 type inputGroup struct {
-	ID                   int64   `json:"id"`
-	Name                 string  `json:"name"`
-	Platform             string  `json:"platform"`
-	RateMultiplier       float64 `json:"rate_multiplier"`
-	SubscriptionType     string  `json:"subscription_type"`
-	ProfitControlEnabled bool    `json:"profit_control_enabled"`
-	ProfitMinMargin      float64 `json:"profit_min_margin"`
-	ProfitSafetyBuffer   float64 `json:"profit_safety_buffer"`
-	PeakRateEnabled      bool    `json:"peak_rate_enabled"`
-	PeakStart            string  `json:"peak_start"`
-	PeakEnd              string  `json:"peak_end"`
-	PeakRateMultiplier   float64 `json:"peak_rate_multiplier"`
+	ID                   int64                                      `json:"id"`
+	Name                 string                                     `json:"name"`
+	Platform             string                                     `json:"platform"`
+	RateMultiplier       float64                                    `json:"rate_multiplier"`
+	SubscriptionType     string                                     `json:"subscription_type"`
+	ProfitControlEnabled bool                                       `json:"profit_control_enabled"`
+	ProfitMinMargin      float64                                    `json:"profit_min_margin"`
+	ProfitSafetyBuffer   float64                                    `json:"profit_safety_buffer"`
+	PeakRateEnabled      bool                                       `json:"peak_rate_enabled"`
+	PeakStart            string                                     `json:"peak_start"`
+	PeakEnd              string                                     `json:"peak_end"`
+	PeakRateMultiplier   float64                                    `json:"peak_rate_multiplier"`
+	OffPeakMultiplier    float64                                    `json:"off_peak_rate_multiplier"`
+	PeakModelMultipliers map[string]service.PeakModelMultiplierRule `json:"peak_model_multipliers,omitempty"`
 }
 
 type inputAccount struct {
@@ -169,6 +171,8 @@ func parsePreviewInputs(raw []byte, assumeEnabled bool) ([]service.ProfitPreview
 			PeakStart:            entry.Group.PeakStart,
 			PeakEnd:              entry.Group.PeakEnd,
 			PeakRateMultiplier:   entry.Group.PeakRateMultiplier,
+			OffPeakMultiplier:    entry.Group.OffPeakMultiplier,
+			PeakModelMultipliers: entry.Group.PeakModelMultipliers,
 		}
 		accounts := make([]*service.Account, 0, len(entry.Accounts))
 		for _, a := range entry.Accounts {

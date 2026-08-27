@@ -2,6 +2,7 @@ package handler
 
 import (
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
@@ -14,24 +15,27 @@ import (
 const keyBillingInfoSchemaVersion = 1
 
 type keyBillingInfoResponse struct {
-	Object                  string    `json:"object"`
-	SchemaVersion           int       `json:"schema_version"`
-	BillingScope            string    `json:"billing_scope"`
-	GroupRateMultiplier     float64   `json:"group_rate_multiplier"`
-	UserRateMultiplier      *float64  `json:"user_rate_multiplier,omitempty"`
-	ResolvedRateMultiplier  float64   `json:"resolved_rate_multiplier"`
-	PeakRateEnabled         bool      `json:"peak_rate_enabled"`
-	PeakStart               *string   `json:"peak_start,omitempty"`
-	PeakEnd                 *string   `json:"peak_end,omitempty"`
-	PeakRateMultiplier      *float64  `json:"peak_rate_multiplier,omitempty"`
-	AppliedPeakMultiplier   *float64  `json:"applied_peak_multiplier,omitempty"`
-	EffectiveRateMultiplier float64   `json:"effective_rate_multiplier"`
-	Timezone                *string   `json:"timezone,omitempty"`
-	ObservedAt              time.Time `json:"observed_at"`
+	Object                  string                                     `json:"object"`
+	SchemaVersion           int                                        `json:"schema_version"`
+	BillingScope            string                                     `json:"billing_scope"`
+	GroupRateMultiplier     float64                                    `json:"group_rate_multiplier"`
+	UserRateMultiplier      *float64                                   `json:"user_rate_multiplier,omitempty"`
+	ResolvedRateMultiplier  float64                                    `json:"resolved_rate_multiplier"`
+	PeakRateEnabled         bool                                       `json:"peak_rate_enabled"`
+	PeakStart               *string                                    `json:"peak_start,omitempty"`
+	PeakEnd                 *string                                    `json:"peak_end,omitempty"`
+	PeakRateMultiplier      *float64                                   `json:"peak_rate_multiplier,omitempty"`
+	OffPeakRateMultiplier   *float64                                   `json:"off_peak_rate_multiplier,omitempty"`
+	PeakModelMultipliers    map[string]service.PeakModelMultiplierRule `json:"peak_model_multipliers,omitempty"`
+	AppliedPeakMultiplier   *float64                                   `json:"applied_peak_multiplier,omitempty"`
+	EffectiveRateMultiplier float64                                    `json:"effective_rate_multiplier"`
+	Timezone                *string                                    `json:"timezone,omitempty"`
+	ObservedAt              time.Time                                  `json:"observed_at"`
 }
 
 // KeyBillingInfo returns the token billing multiplier effective for the authenticated API key.
-// GET /v1/sub2api/billing
+// GET /v1/sub2api/billing，可选 query 参数 model：按该模型匹配分模型高峰倍率，
+// 缺省按默认高峰倍率计算 applied_peak_multiplier。
 func (h *GatewayHandler) KeyBillingInfo(c *gin.Context) {
 	apiKey, ok := middleware2.GetAPIKeyFromContext(c)
 	if !ok {
@@ -58,7 +62,7 @@ func (h *GatewayHandler) KeyBillingInfo(c *gin.Context) {
 	}
 
 	c.Header("Cache-Control", "no-store")
-	c.JSON(http.StatusOK, buildKeyBillingInfo(apiKey, resolvedRate, timezone.Now()))
+	c.JSON(http.StatusOK, buildKeyBillingInfo(apiKey, resolvedRate, strings.TrimSpace(c.Query("model")), timezone.Now()))
 }
 
 func (h *GatewayHandler) resolveKeyBillingRate(c *gin.Context, apiKey *service.APIKey) (float64, bool) {
@@ -77,13 +81,13 @@ func (h *GatewayHandler) resolveKeyBillingRate(c *gin.Context, apiKey *service.A
 	}
 }
 
-func buildKeyBillingInfo(apiKey *service.APIKey, resolvedRate float64, now time.Time) keyBillingInfoResponse {
+func buildKeyBillingInfo(apiKey *service.APIKey, resolvedRate float64, model string, now time.Time) keyBillingInfoResponse {
 	groupRate := apiKey.Group.RateMultiplier
 	var userRate *float64
 	if resolvedRate != groupRate {
 		userRate = &resolvedRate
 	}
-	appliedPeak := apiKey.Group.PeakMultiplierAt(now)
+	appliedPeak := apiKey.Group.PeakMultiplierAt(model, now)
 
 	response := keyBillingInfoResponse{
 		Object:                  "sub2api.key_billing",
@@ -100,6 +104,8 @@ func buildKeyBillingInfo(apiKey *service.APIKey, resolvedRate float64, now time.
 		response.PeakStart = &apiKey.Group.PeakStart
 		response.PeakEnd = &apiKey.Group.PeakEnd
 		response.PeakRateMultiplier = &apiKey.Group.PeakRateMultiplier
+		response.OffPeakRateMultiplier = &apiKey.Group.OffPeakMultiplier
+		response.PeakModelMultipliers = apiKey.Group.PeakModelMultipliers
 		response.AppliedPeakMultiplier = &appliedPeak
 		tz := timezone.Location().String()
 		response.Timezone = &tz

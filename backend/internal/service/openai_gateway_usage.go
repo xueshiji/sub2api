@@ -179,7 +179,6 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	// Resolve，以免污染 user:group 倍率缓存。
 	baseMultiplier := multiplier
 	pricingAt := openAIUsagePricingAt(input)
-	multiplier, imageMultiplier := computePeakAwareMultipliers(apiKey, baseMultiplier, pricingAt)
 	videoMultiplier := resolveVideoRateMultiplier(apiKey, baseMultiplier)
 
 	var cost *CostBreakdown
@@ -203,6 +202,8 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		result.Model,
 	)
 	billingModels = s.filterCNProviderBillingModelCandidates(ctx, account, apiKey, billingModels)
+	// 高峰因子按计费模型匹配分模型规则，须在候选链敲定后按首候选（定价基准）计算。
+	multiplier, imageMultiplier := computePeakAwareMultipliers(apiKey, firstUsageBillingModel(billingModels), baseMultiplier, pricingAt)
 	serviceTier := ""
 	if result.ServiceTier != nil {
 		serviceTier = strings.TrimSpace(*result.ServiceTier)
@@ -258,8 +259,10 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	); responseModel != "" && !strings.EqualFold(responseModel, baselineBillingModel) {
 		if identified, responseChannelPriced := s.hasIdentifiedOpenAIResponsePricing(ctx, responseModel, apiKey); identified {
 			responseModels := s.filterCNProviderBillingModelCandidates(ctx, account, apiKey, usageBillingModelCandidates(responseModel))
+			// 分模型高峰倍率随计费模型变化，重定价时按 responseModel 重算 peak 因子。
+			responseMultiplier := baseMultiplier * groupPeakFactor(apiKey, responseModel, pricingAt)
 			responseCost, responseErr := s.calculateOpenAIRecordUsageCost(
-				ctx, result, apiKey, responseModels, multiplier, imageMultiplier,
+				ctx, result, apiKey, responseModels, responseMultiplier, imageMultiplier,
 				videoMultiplier, baseMultiplier, tokens, serviceTier, longContextBillingGate, pricingAt,
 			)
 			// 基线定价源以 baselineBillingModel 为准：它正是 calculateOpenAIRecordUsageCost

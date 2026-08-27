@@ -105,6 +105,12 @@ func mustCreateGroup(t *testing.T, client *dbent.Client, g *service.Group) *serv
 	if g.MonthlyLimitUSD != nil {
 		create.SetMonthlyLimitUsd(*g.MonthlyLimitUSD)
 	}
+	if g.OffPeakMultiplier != 0 {
+		create.SetOffPeakRateMultiplier(g.OffPeakMultiplier)
+	}
+	if g.PeakModelMultipliers != nil {
+		create.SetPeakModelMultipliers(g.PeakModelMultipliers)
+	}
 	if !g.CreatedAt.IsZero() {
 		create.SetCreatedAt(g.CreatedAt)
 	}

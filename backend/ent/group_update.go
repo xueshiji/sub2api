@@ -181,6 +181,39 @@ func (_u *GroupUpdate) AddPeakRateMultiplier(v float64) *GroupUpdate {
 	return _u
 }
 
+// SetOffPeakRateMultiplier sets the "off_peak_rate_multiplier" field.
+func (_u *GroupUpdate) SetOffPeakRateMultiplier(v float64) *GroupUpdate {
+	_u.mutation.ResetOffPeakRateMultiplier()
+	_u.mutation.SetOffPeakRateMultiplier(v)
+	return _u
+}
+
+// SetNillableOffPeakRateMultiplier sets the "off_peak_rate_multiplier" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableOffPeakRateMultiplier(v *float64) *GroupUpdate {
+	if v != nil {
+		_u.SetOffPeakRateMultiplier(*v)
+	}
+	return _u
+}
+
+// AddOffPeakRateMultiplier adds value to the "off_peak_rate_multiplier" field.
+func (_u *GroupUpdate) AddOffPeakRateMultiplier(v float64) *GroupUpdate {
+	_u.mutation.AddOffPeakRateMultiplier(v)
+	return _u
+}
+
+// SetPeakModelMultipliers sets the "peak_model_multipliers" field.
+func (_u *GroupUpdate) SetPeakModelMultipliers(v map[string]domain.PeakModelMultiplierRule) *GroupUpdate {
+	_u.mutation.SetPeakModelMultipliers(v)
+	return _u
+}
+
+// ClearPeakModelMultipliers clears the value of the "peak_model_multipliers" field.
+func (_u *GroupUpdate) ClearPeakModelMultipliers() *GroupUpdate {
+	_u.mutation.ClearPeakModelMultipliers()
+	return _u
+}
+
 // SetIsExclusive sets the "is_exclusive" field.
 func (_u *GroupUpdate) SetIsExclusive(v bool) *GroupUpdate {
 	_u.mutation.SetIsExclusive(v)
@@ -1622,6 +1655,18 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.AddedPeakRateMultiplier(); ok {
 		_spec.AddField(group.FieldPeakRateMultiplier, field.TypeFloat64, value)
 	}
+	if value, ok := _u.mutation.OffPeakRateMultiplier(); ok {
+		_spec.SetField(group.FieldOffPeakRateMultiplier, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedOffPeakRateMultiplier(); ok {
+		_spec.AddField(group.FieldOffPeakRateMultiplier, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.PeakModelMultipliers(); ok {
+		_spec.SetField(group.FieldPeakModelMultipliers, field.TypeJSON, value)
+	}
+	if _u.mutation.PeakModelMultipliersCleared() {
+		_spec.ClearField(group.FieldPeakModelMultipliers, field.TypeJSON)
+	}
 	if value, ok := _u.mutation.IsExclusive(); ok {
 		_spec.SetField(group.FieldIsExclusive, field.TypeBool, value)
 	}
@@ -2407,6 +2452,39 @@ func (_u *GroupUpdateOne) SetNillablePeakRateMultiplier(v *float64) *GroupUpdate
 // AddPeakRateMultiplier adds value to the "peak_rate_multiplier" field.
 func (_u *GroupUpdateOne) AddPeakRateMultiplier(v float64) *GroupUpdateOne {
 	_u.mutation.AddPeakRateMultiplier(v)
+	return _u
+}
+
+// SetOffPeakRateMultiplier sets the "off_peak_rate_multiplier" field.
+func (_u *GroupUpdateOne) SetOffPeakRateMultiplier(v float64) *GroupUpdateOne {
+	_u.mutation.ResetOffPeakRateMultiplier()
+	_u.mutation.SetOffPeakRateMultiplier(v)
+	return _u
+}
+
+// SetNillableOffPeakRateMultiplier sets the "off_peak_rate_multiplier" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableOffPeakRateMultiplier(v *float64) *GroupUpdateOne {
+	if v != nil {
+		_u.SetOffPeakRateMultiplier(*v)
+	}
+	return _u
+}
+
+// AddOffPeakRateMultiplier adds value to the "off_peak_rate_multiplier" field.
+func (_u *GroupUpdateOne) AddOffPeakRateMultiplier(v float64) *GroupUpdateOne {
+	_u.mutation.AddOffPeakRateMultiplier(v)
+	return _u
+}
+
+// SetPeakModelMultipliers sets the "peak_model_multipliers" field.
+func (_u *GroupUpdateOne) SetPeakModelMultipliers(v map[string]domain.PeakModelMultiplierRule) *GroupUpdateOne {
+	_u.mutation.SetPeakModelMultipliers(v)
+	return _u
+}
+
+// ClearPeakModelMultipliers clears the value of the "peak_model_multipliers" field.
+func (_u *GroupUpdateOne) ClearPeakModelMultipliers() *GroupUpdateOne {
+	_u.mutation.ClearPeakModelMultipliers()
 	return _u
 }
 
@@ -3880,6 +3958,18 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if value, ok := _u.mutation.AddedPeakRateMultiplier(); ok {
 		_spec.AddField(group.FieldPeakRateMultiplier, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.OffPeakRateMultiplier(); ok {
+		_spec.SetField(group.FieldOffPeakRateMultiplier, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedOffPeakRateMultiplier(); ok {
+		_spec.AddField(group.FieldOffPeakRateMultiplier, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.PeakModelMultipliers(); ok {
+		_spec.SetField(group.FieldPeakModelMultipliers, field.TypeJSON, value)
+	}
+	if _u.mutation.PeakModelMultipliersCleared() {
+		_spec.ClearField(group.FieldPeakModelMultipliers, field.TypeJSON)
 	}
 	if value, ok := _u.mutation.IsExclusive(); ok {
 		_spec.SetField(group.FieldIsExclusive, field.TypeBool, value)

@@ -13,9 +13,11 @@ package service
 //     最终扣费共用同一 D（RecordUsage 的高峰因子同样取 pricingAt），一个请求
 //     不会中途变价。D 与计费完全同源：按请求真实计费分组（ctxkey.Group，即
 //     apiKey 自身分组；composite 请求为父分组）做 ResolveUserGroupRateMultiplier
-//     （用户-分组覆盖 ?? 分组默认）× Group.PeakMultiplierAt(pricingAt)，绝不在
-//     用户有覆盖时退回分组默认；开关与 margin/buffer 则始终取被调度
-//     openai/grok 分组。
+//     （用户-分组覆盖 ?? 分组默认）× Group.PeakMultiplierAt(requestedModel, pricingAt)，
+//     绝不在用户有覆盖时退回分组默认；开关与 margin/buffer 则始终取被调度
+//     openai/grok 分组。分模型高峰倍率的口径差异是调度前无法消除的固有近似：
+//     门按请求开始时刻的 requestedModel（渠道映射前），计费按映射后的
+//     billingModel，账号级模型映射跨家族时两者可能命中不同模式。
 //   - U（上游成本倍率）取 accounts.rate_multiplier。倍率可以由运营者手工维护，
 //     也可以由上游倍率探测同步写回；利润门不再耦合探测协议、新鲜度或账号类型。
 //     0 是合法的免费上游倍率；nil、负数、NaN、Inf 属于非法数据并保守拒绝。
@@ -129,12 +131,13 @@ type openAIProfitControlGate struct {
 
 // WithOpenAIRequestPricingContext 在请求开始处装配请求级定价上下文：固定
 // pricingAt（返回给调用方，供 RecordUsage 入参共用同一时刻），并按分组安装
-// 利润门。ctx 携带 WithOpenAIProfitControlSuppressed 标记（门范围外流量）时
-// 只固定 pricingAt、不装门。handler 各文本入口应在选号循环前调用一次。
-func (s *OpenAIGatewayService) WithOpenAIRequestPricingContext(ctx context.Context, groupID *int64) (context.Context, time.Time) {
+// 利润门。requestedModel 供分模型高峰倍率匹配（空串走默认倍率）。ctx 携带
+// WithOpenAIProfitControlSuppressed 标记（门范围外流量）时只固定 pricingAt、
+// 不装门。handler 各文本入口应在选号循环前调用一次。
+func (s *OpenAIGatewayService) WithOpenAIRequestPricingContext(ctx context.Context, groupID *int64, requestedModel string) (context.Context, time.Time) {
 	pricingAt := timezone.Now()
 	ctx = context.WithValue(ctx, openAIPricingAtCtxKey{}, pricingAt)
-	return s.withOpenAIProfitControlGate(ctx, groupID), pricingAt
+	return s.withOpenAIProfitControlGate(ctx, groupID, requestedModel), pricingAt
 }
 
 // WithOpenAIProfitControlSuppressed 标记本请求在利润门范围之外（独立图片/视频
@@ -148,8 +151,9 @@ func WithOpenAIProfitControlSuppressed(ctx context.Context) context.Context {
 // 冻结 pricingAt 并按当前配置重装利润门，使 turn 的准入与计费同源：峰前建连
 // 保活不再让后续 turn 继续按建连时刻的谷价定价。连接可能被调度到与入口分组
 // 不同的分组（composite 成员分组），turn 级重装以连接上已装门的调度分组为准；
-// 连接从未装门时才回退入口分组。抑制标记下只刷新 pricingAt。
-func (s *OpenAIGatewayService) WithOpenAITurnPricingContext(ctx context.Context, groupID *int64) (context.Context, time.Time) {
+// 连接从未装门时才回退入口分组。turnModel 供分模型高峰倍率匹配，缺失时传空串
+// （走默认倍率）。抑制标记下只刷新 pricingAt。
+func (s *OpenAIGatewayService) WithOpenAITurnPricingContext(ctx context.Context, groupID *int64, turnModel string) (context.Context, time.Time) {
 	pricingAt := timezone.Now()
 	ctx = context.WithValue(ctx, openAIPricingAtCtxKey{}, pricingAt)
 	if _, suppressed := ctx.Value(openAIProfitControlSuppressCtxKey{}).(struct{}); suppressed {
@@ -159,7 +163,7 @@ func (s *OpenAIGatewayService) WithOpenAITurnPricingContext(ctx context.Context,
 		gid := existing.groupID
 		groupID = &gid
 	}
-	gate := s.resolveOpenAIProfitControlGate(ctx, groupID)
+	gate := s.resolveOpenAIProfitControlGate(ctx, groupID, turnModel)
 	if gate == nil {
 		// 分组已关门（或配置读取失败 fail-open）：清除旧 turn 的门，后续 turn
 		// 按无门放行，与 HTTP 路径的开关语义一致。
@@ -188,10 +192,11 @@ func OpenAIPricingAtFromContext(ctx context.Context) time.Time {
 }
 
 // withOpenAIProfitControlGate 解析分组利润控制配置；启用时把预计算好的准入门
-// 装进 ctx。抑制标记、未启用/非 openai 分组/无法取到分组配置时原样返回 ctx
-// （门不存在，全部否决点自动放行，既有行为零变化）。ctx 已有同分组门时直接
-// 复用：同一请求的全部 failover 重入共享同一阈值。
-func (s *OpenAIGatewayService) withOpenAIProfitControlGate(ctx context.Context, groupID *int64) context.Context {
+// 装进 ctx。requestedModel 供分模型高峰倍率匹配（空串走默认倍率）。抑制标记、
+// 未启用/非 openai 分组/无法取到分组配置时原样返回 ctx（门不存在，全部否决点
+// 自动放行，既有行为零变化）。ctx 已有同分组门时直接复用：同一请求的全部
+// failover 重入共享同一阈值。
+func (s *OpenAIGatewayService) withOpenAIProfitControlGate(ctx context.Context, groupID *int64, requestedModel string) context.Context {
 	if _, suppressed := ctx.Value(openAIProfitControlSuppressCtxKey{}).(struct{}); suppressed {
 		return ctx
 	}
@@ -200,7 +205,7 @@ func (s *OpenAIGatewayService) withOpenAIProfitControlGate(ctx context.Context, 
 			return ctx
 		}
 	}
-	gate := s.resolveOpenAIProfitControlGate(ctx, groupID)
+	gate := s.resolveOpenAIProfitControlGate(ctx, groupID, requestedModel)
 	if gate == nil {
 		// 被调度分组无门（未启用/非 openai/配置读取失败）而 ctx 带着其他分组的
 		// 请求门时清除之：门配置取被调度分组，父分组阈值不得泄漏到成员分组
@@ -214,7 +219,7 @@ func (s *OpenAIGatewayService) withOpenAIProfitControlGate(ctx context.Context, 
 	return context.WithValue(ctx, openAIProfitControlGateCtxKey{}, gate)
 }
 
-func (s *OpenAIGatewayService) resolveOpenAIProfitControlGate(ctx context.Context, groupID *int64) *openAIProfitControlGate {
+func (s *OpenAIGatewayService) resolveOpenAIProfitControlGate(ctx context.Context, groupID *int64, requestedModel string) *openAIProfitControlGate {
 	if s == nil || groupID == nil || *groupID <= 0 {
 		return nil
 	}
@@ -257,7 +262,7 @@ func (s *OpenAIGatewayService) resolveOpenAIProfitControlGate(ctx context.Contex
 	if userID, _ := ctx.Value(ctxkey.UserID).(int64); userID > 0 {
 		downstream = s.ResolveUserGroupRateMultiplier(ctx, userID, billingGroup.ID, billingGroup.RateMultiplier)
 	}
-	downstream *= billingGroup.PeakMultiplierAt(pricingAt)
+	downstream *= billingGroup.PeakMultiplierAt(requestedModel, pricingAt)
 
 	deduction := group.ProfitMinMargin + group.ProfitSafetyBuffer
 	threshold := clampProfitControlThreshold(downstream * (1 - deduction))

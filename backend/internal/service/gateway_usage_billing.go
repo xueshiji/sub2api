@@ -854,7 +854,7 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 	if pricingAt.IsZero() {
 		pricingAt = timezone.Now()
 	}
-	multiplier, imageMultiplier := computePeakAwareMultipliers(apiKey, multiplier, pricingAt)
+	baseMultiplier := multiplier
 
 	// 确定计费模型
 	concreteBillingModel := forwardResultBillingModel(result.Model, result.UpstreamModel)
@@ -875,6 +875,8 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 	// 通用兜底（与 OpenAI 路径的 usageBillingModelCandidates 语义对齐）：
 	// 选定模型查不到任何价格时回退到实际转发的具体模型。已定价流量不受影响。
 	billingModel = s.billableModelWithFallback(ctx, apiKey, billingModel, result.UpstreamModel, result.Model)
+	// 高峰因子按计费模型匹配分模型规则，须在 billingModel 敲定后计算。
+	multiplier, imageMultiplier := computePeakAwareMultipliers(apiKey, billingModel, baseMultiplier, pricingAt)
 
 	// 确定 RequestedModel（渠道映射前的原始模型）
 	requestedModel := result.Model
@@ -895,7 +897,9 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 		result.ImageCount > 0 || result.AudioUsage != nil || result.SearchCount > 0,
 	); responseModel != "" && !strings.EqualFold(responseModel, strings.TrimSpace(billingModel)) {
 		if identified, responseChannelPriced := s.hasIdentifiedResponseModelPricing(ctx, responseModel, apiKey); identified {
-			responseCost := s.calculateRecordUsageCost(ctx, result, apiKey, responseModel, multiplier, imageMultiplier, pricingAt, opts)
+			// 分模型高峰倍率随计费模型变化，重定价时按 responseModel 重算 peak 因子。
+			responseMultiplier := baseMultiplier * groupPeakFactor(apiKey, responseModel, pricingAt)
+			responseCost := s.calculateRecordUsageCost(ctx, result, apiKey, responseModel, responseMultiplier, imageMultiplier, pricingAt, opts)
 			baselineChannelPriced := s.resolveChannelPricing(ctx, billingModel, apiKey) != nil
 			if responseModelBillingAdoptable(cost, responseCost, baselineChannelPriced, responseChannelPriced) {
 				// billingModel 到此为止只是定价查表的入参，后续流程只消费 cost，

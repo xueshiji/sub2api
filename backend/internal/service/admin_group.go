@@ -376,9 +376,21 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 	if input.PeakRateMultiplier != nil {
 		peakRateMultiplier = *input.PeakRateMultiplier
 	}
+	offPeakMultiplier := 1.0
+	if input.OffPeakMultiplier != nil {
+		offPeakMultiplier = *input.OffPeakMultiplier
+	}
 	// 先归一化（非订阅分组清空高峰配置、清洗停用状态下的脏字段）再校验，与 UpdateGroup 同一收口。
-	peakRateEnabled, peakStart, peakEnd, peakRateMultiplier := NormalizePeakRateConfig(subscriptionType, input.PeakRateEnabled, input.PeakStart, input.PeakEnd, peakRateMultiplier)
-	if err := ValidatePeakRateConfig(subscriptionType, peakRateEnabled, peakStart, peakEnd, peakRateMultiplier); err != nil {
+	peakCfg := NormalizePeakRateConfig(PeakRateConfig{
+		SubscriptionType:  subscriptionType,
+		Enabled:           input.PeakRateEnabled,
+		Start:             input.PeakStart,
+		End:               input.PeakEnd,
+		Multiplier:        peakRateMultiplier,
+		OffPeakMultiplier: offPeakMultiplier,
+		ModelMultipliers:  input.PeakModelMultipliers,
+	})
+	if err := ValidatePeakRateConfig(peakCfg); err != nil {
 		return nil, err
 	}
 
@@ -478,10 +490,12 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		BatchImageHoldMultiplier:        batchImageHoldMultiplier,
 		VideoRateIndependent:            input.VideoRateIndependent,
 		VideoRateMultiplier:             videoRateMultiplier,
-		PeakRateEnabled:                 peakRateEnabled,
-		PeakStart:                       peakStart,
-		PeakEnd:                         peakEnd,
-		PeakRateMultiplier:              peakRateMultiplier,
+		PeakRateEnabled:                 peakCfg.Enabled,
+		PeakStart:                       peakCfg.Start,
+		PeakEnd:                         peakCfg.End,
+		PeakRateMultiplier:              peakCfg.Multiplier,
+		OffPeakMultiplier:               peakCfg.OffPeakMultiplier,
+		PeakModelMultipliers:            peakCfg.ModelMultipliers,
 		ProfitControlEnabled:            profitControlEnabled,
 		ProfitMinMargin:                 profitMinMargin,
 		ProfitSafetyBuffer:              profitSafetyBuffer,
@@ -762,11 +776,28 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	if input.PeakRateMultiplier != nil {
 		group.PeakRateMultiplier = *input.PeakRateMultiplier
 	}
+	if input.OffPeakMultiplier != nil {
+		group.OffPeakMultiplier = *input.OffPeakMultiplier
+	}
+	// PeakModelMultipliers：nil 表示不修改，非 nil（含空 map）表示整体替换。
+	if input.PeakModelMultipliers != nil {
+		group.PeakModelMultipliers = input.PeakModelMultipliers
+	}
 	// 先归一化（非订阅分组——含本次更新转为非订阅——静默清空高峰配置，清洗停用状态下的脏字段），
 	// 再收敛校验：Update 可能只传部分 peak 字段，需对合并后的最终配置统一校验，
 	// 防止单独修改 start/end 导致最终 start>=end 等非法配置入库。与 CreateGroup 同一收口。
-	group.PeakRateEnabled, group.PeakStart, group.PeakEnd, group.PeakRateMultiplier = NormalizePeakRateConfig(group.SubscriptionType, group.PeakRateEnabled, group.PeakStart, group.PeakEnd, group.PeakRateMultiplier)
-	if err := ValidatePeakRateConfig(group.SubscriptionType, group.PeakRateEnabled, group.PeakStart, group.PeakEnd, group.PeakRateMultiplier); err != nil {
+	peakCfg := NormalizePeakRateConfig(PeakRateConfig{
+		SubscriptionType:  group.SubscriptionType,
+		Enabled:           group.PeakRateEnabled,
+		Start:             group.PeakStart,
+		End:               group.PeakEnd,
+		Multiplier:        group.PeakRateMultiplier,
+		OffPeakMultiplier: group.OffPeakMultiplier,
+		ModelMultipliers:  group.PeakModelMultipliers,
+	})
+	group.PeakRateEnabled, group.PeakStart, group.PeakEnd, group.PeakRateMultiplier = peakCfg.Enabled, peakCfg.Start, peakCfg.End, peakCfg.Multiplier
+	group.OffPeakMultiplier, group.PeakModelMultipliers = peakCfg.OffPeakMultiplier, peakCfg.ModelMultipliers
+	if err := ValidatePeakRateConfig(peakCfg); err != nil {
 		return nil, err
 	}
 	if input.ProfitControlEnabled != nil {

@@ -93,6 +93,17 @@ func cloneGroupMessagesDispatchModelConfig(value OpenAIMessagesDispatchModelConf
 	return cloned
 }
 
+func cloneGroupPeakModelMultipliers(value map[string]PeakModelMultiplierRule) map[string]PeakModelMultiplierRule {
+	if value == nil {
+		return nil
+	}
+	cloned := make(map[string]PeakModelMultiplierRule, len(value))
+	for pattern, rule := range value {
+		cloned[pattern] = rule
+	}
+	return cloned
+}
+
 func cloneGroupForDuplicate(source *Group, operationID string) *Group {
 	return &Group{
 		Name:                            duplicateGroupName(source.Name, 1),
@@ -103,6 +114,8 @@ func cloneGroupForDuplicate(source *Group, operationID string) *Group {
 		PeakStart:                       source.PeakStart,
 		PeakEnd:                         source.PeakEnd,
 		PeakRateMultiplier:              source.PeakRateMultiplier,
+		OffPeakMultiplier:               source.OffPeakMultiplier,
+		PeakModelMultipliers:            cloneGroupPeakModelMultipliers(source.PeakModelMultipliers),
 		ProfitControlEnabled:            source.ProfitControlEnabled,
 		ProfitMinMargin:                 source.ProfitMinMargin,
 		ProfitSafetyBuffer:              source.ProfitSafetyBuffer,

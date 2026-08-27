@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"github.com/stretchr/testify/require"
 )
 
@@ -599,4 +600,59 @@ func TestToUsageFields_ResponseModelSourcePassesThrough(t *testing.T) {
 	fields := r.ToUsageFields("claude-fable-5", "claude-fable-5")
 	require.Equal(t, int64(4), fields.ChannelID)
 	require.Equal(t, BillingModelSourceResponse, fields.BillingModelSource)
+}
+
+// 分模型高峰倍率下，response_model 重定价须按响应模型重算 peak 因子：
+// 响应模型配 0 倍（恒小于任何正成本，必然采纳），采纳后成本必须为 0；
+// 若误用基线模型的 peak，成本会是非零的正数。
+func TestGatewayServiceRecordUsage_ResponseModelRepricesPerModelPeak(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	userRepo := &openAIRecordUsageUserRepoStub{}
+	svc := newGatewayRecordUsageServiceForTest(usageRepo, userRepo, &openAIRecordUsageSubRepoStub{})
+	tokens := UsageTokens{InputTokens: 100, OutputTokens: 50}
+	_, pricier, _, pricierCost := orderedResponseBillingModels(t, svc.billingService, tokens, anthropicCheapFixtureModel, anthropicPriceyFixtureModel)
+	require.True(t, pricierCost.TotalCost > 0)
+
+	groupID := int64(801)
+	group := &Group{
+		ID:                 groupID,
+		Platform:           PlatformAnthropic,
+		Status:             StatusActive,
+		Hydrated:           true,
+		RateMultiplier:     1,
+		SubscriptionType:   SubscriptionTypeSubscription,
+		PeakRateEnabled:    true,
+		PeakStart:          "00:00",
+		PeakEnd:            "23:59",
+		PeakRateMultiplier: 1,
+		OffPeakMultiplier:  1,
+		// 响应模型（便宜的那个 fixture）0 倍：只有按 responseModel 重算 peak 才能拿到 0。
+		PeakModelMultipliers: map[string]PeakModelMultiplierRule{anthropicCheapFixtureModel: {Peak: 0, OffPeak: 1}},
+	}
+	// 2026-06-29 为周一，处于全天窗口内。
+	pricingAt := time.Date(2026, 6, 29, 10, 0, 0, 0, timezone.Location())
+
+	err := svc.RecordUsage(context.Background(), &RecordUsageInput{
+		Result: &ForwardResult{
+			RequestID:             "gateway_response_model_per_model_peak",
+			Usage:                 ClaudeUsage{InputTokens: 100, OutputTokens: 50},
+			Model:                 pricier,
+			UpstreamResponseModel: anthropicCheapFixtureModel,
+			Duration:              time.Second,
+		},
+		APIKey:    &APIKey{ID: 501, Quota: 100, GroupID: &groupID, Group: group},
+		User:      &User{ID: 601},
+		Account:   &Account{ID: 701},
+		PricingAt: pricingAt,
+		ChannelUsageFields: ChannelUsageFields{
+			ChannelID:          9,
+			OriginalModel:      pricier,
+			ChannelMappedModel: pricier,
+			BillingModelSource: BillingModelSourceResponse,
+		},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, usageRepo.lastLog)
+	require.InDelta(t, 0, usageRepo.lastLog.ActualCost, 1e-12, "response_model 重定价必须按响应模型的 0 倍分模型倍率计费")
 }

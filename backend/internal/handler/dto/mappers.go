@@ -201,6 +201,8 @@ func groupFromServiceBase(g *service.Group) Group {
 		PeakStart:                       g.PeakStart,
 		PeakEnd:                         g.PeakEnd,
 		PeakRateMultiplier:              g.PeakRateMultiplier,
+		OffPeakMultiplier:               g.OffPeakMultiplier,
+		PeakModelMultipliers:            g.PeakModelMultipliers,
 		ImagePrice1K:                    g.ImagePrice1K,
 		ImagePrice2K:                    g.ImagePrice2K,
 		ImagePrice4K:                    g.ImagePrice4K,

@@ -14,6 +14,7 @@ import (
 type OpenAIMessagesDispatchModelConfig = domain.OpenAIMessagesDispatchModelConfig
 type GroupModelsListConfig = domain.GroupModelsListConfig
 type ReasoningEffortMapping = domain.ReasoningEffortMapping
+type PeakModelMultiplierRule = domain.PeakModelMultiplierRule
 
 type Group struct {
 	ID             int64
@@ -21,16 +22,19 @@ type Group struct {
 	Description    string
 	Platform       string
 	RateMultiplier float64
-	// 高峰时段倍率：peak_rate_enabled 为 true 且当前时刻处于 [PeakStart, PeakEnd) 时，
-	// token 计费倍率额外乘以 PeakRateMultiplier；仅周一至周五生效，周六/周日不叠加。
+	// 高峰时段倍率：peak_rate_enabled 为 true 时，工作日 [PeakStart, PeakEnd) 内
+	// token 计费倍率额外乘以高峰倍率，工作日窗口外与周末乘以非高峰倍率；两者均按请求
+	// 模型查 PeakModelMultipliers（未命中回落分组默认 PeakRateMultiplier/OffPeakMultiplier）。
 	// 详见 PeakMultiplierAt。
-	PeakRateEnabled    bool
-	PeakStart          string
-	PeakEnd            string
-	PeakRateMultiplier float64
-	IsExclusive        bool
-	Status             string
-	Hydrated           bool // indicates the group was loaded from a trusted repository source
+	PeakRateEnabled      bool
+	PeakStart            string
+	PeakEnd              string
+	PeakRateMultiplier   float64
+	OffPeakMultiplier    float64
+	PeakModelMultipliers map[string]PeakModelMultiplierRule
+	IsExclusive          bool
+	Status               string
+	Hydrated             bool // indicates the group was loaded from a trusted repository source
 	// DuplicateOperationID is internal persistence metadata used only to recover
 	// an already committed one-click copy. It must never be mapped to API DTOs.
 	DuplicateOperationID string
@@ -317,14 +321,16 @@ func parseMinutes(hhmm string) (int, bool) {
 	return h*60 + m, true
 }
 
-// PeakMultiplierAt 返回指定时刻 now 的高峰因子。
-//   - 未启用 / 未配置 / 配置非法（start>=end 或格式错误） / 非高峰时段 → 返回 1.0（安全降级）
+// PeakMultiplierAt 返回指定时刻 now、指定模型 model 的分时倍率因子。
+//   - 未启用 / 未配置 / 配置非法（start>=end 或格式错误）/ 非订阅分组 → 返回 1.0（安全降级）
 //   - 区间为左闭右开 [PeakStart, PeakEnd)，仅支持当日区间，不支持跨天（如 22:00-次日02:00）
-//   - 周六/周日不应用高峰倍率，恒返回 1.0（最终按分组倍率计费）
+//   - 工作日窗口内：命中分模型规则取 rule.Peak，否则默认 PeakRateMultiplier；
+//     工作日窗口外与周六/周日：命中分模型规则取 rule.OffPeak，否则默认 OffPeakMultiplier
+//   - model 为空时不查分模型规则，直接用分组默认倍率
 //   - 时刻基于全局系统时区（timezone.Location）判定
 //
 // 该方法是纯函数，不读取任何外部状态，便于单测。
-func (g *Group) PeakMultiplierAt(now time.Time) float64 {
+func (g *Group) PeakMultiplierAt(model string, now time.Time) float64 {
 	if g == nil || !g.IsSubscriptionType() || !g.PeakRateEnabled || g.PeakStart == "" || g.PeakEnd == "" {
 		return 1.0
 	}
@@ -334,84 +340,202 @@ func (g *Group) PeakMultiplierAt(now time.Time) float64 {
 		return 1.0
 	}
 	t := now.In(timezone.Location())
-	if wd := t.Weekday(); wd == time.Saturday || wd == time.Sunday {
-		return 1.0
-	}
+	wd := t.Weekday()
+	weekday := wd != time.Saturday && wd != time.Sunday
 	cur := t.Hour()*60 + t.Minute()
-	if cur >= start && cur < end {
+	rule, matched := g.peakModelRule(model)
+	if weekday && cur >= start && cur < end {
+		if matched {
+			return rule.Peak
+		}
 		return g.PeakRateMultiplier
 	}
-	return 1.0
+	if matched {
+		return rule.OffPeak
+	}
+	return g.offPeakMultiplier()
+}
+
+// offPeakMultiplier 读侧护栏：脏数据（非有限或负）降级为 1.0。
+func (g *Group) offPeakMultiplier() float64 {
+	if math.IsNaN(g.OffPeakMultiplier) || math.IsInf(g.OffPeakMultiplier, 0) || g.OffPeakMultiplier < 0 {
+		return 1.0
+	}
+	return g.OffPeakMultiplier
+}
+
+// peakModelRule 返回 model 命中的分模型规则：精确匹配优先，多个通配符命中时取
+// 去 * 后前缀最长者（保证确定性，不依赖 map 遍历顺序）；任一字段非法（非有限或负）
+// 的规则视为脏数据整体跳过。ok=false 表示未命中，回落分组默认倍率。
+func (g *Group) peakModelRule(model string) (rule PeakModelMultiplierRule, ok bool) {
+	if model == "" {
+		return PeakModelMultiplierRule{}, false
+	}
+	best := -1
+	for pattern, candidate := range g.PeakModelMultipliers {
+		if !validPeakModelRuleValue(candidate) {
+			continue
+		}
+		if pattern == model {
+			return candidate, true
+		}
+		if !strings.HasSuffix(pattern, "*") {
+			continue
+		}
+		prefix := strings.TrimSuffix(pattern, "*")
+		if strings.HasPrefix(model, prefix) && len(prefix) > best {
+			best = len(prefix)
+			rule = candidate
+		}
+	}
+	return rule, best >= 0
+}
+
+func validPeakModelRuleValue(rule PeakModelMultiplierRule) bool {
+	return isValidNonNegativeMultiplier(rule.Peak) && isValidNonNegativeMultiplier(rule.OffPeak)
+}
+
+func isValidNonNegativeMultiplier(v float64) bool {
+	return !math.IsNaN(v) && !math.IsInf(v, 0) && v >= 0
+}
+
+// PeakRateConfig 是高峰/分时倍率配置的完整快照，Validate/Normalize 与写路径共用。
+type PeakRateConfig struct {
+	SubscriptionType  string
+	Enabled           bool
+	Start             string
+	End               string
+	Multiplier        float64
+	OffPeakMultiplier float64
+	ModelMultipliers  map[string]PeakModelMultiplierRule
 }
 
 // ValidatePeakRateConfig 是高峰倍率配置的唯一校验来源，供 handler 与 service 层共用。
-// enabled=true 时仅允许订阅类型分组；并要求 start/end 合法且 end>start（不支持跨天），multiplier>=0。
-// multiplier=0 是允许的，表示高峰 token 请求按 0 倍计费，可用于折扣/免费策略。
+// enabled=true 时仅允许订阅类型分组；并要求 start/end 合法且 end>start（不支持跨天），multiplier>=0，
+// off_peak_multiplier>=0，model_multipliers 每项 key 合法（非空、* 仅允许一个且在末尾、不允许裸 "*"）
+// 且 value>=0。multiplier=0 是允许的，表示对应时段 token 请求按 0 倍计费，可用于折扣/免费策略。
 // enabled=false 时放行（不关心类型）。subscriptionType 为空按 standard 处理。
-func ValidatePeakRateConfig(subscriptionType string, enabled bool, start, end string, multiplier float64) error {
-	if !enabled {
+func ValidatePeakRateConfig(cfg PeakRateConfig) error {
+	if !cfg.Enabled {
 		return nil
 	}
-	if !IsSubscriptionTypeLiteral(subscriptionType) {
+	if !IsSubscriptionTypeLiteral(cfg.SubscriptionType) {
 		return errors.New("高峰时段倍率仅支持订阅类型分组")
 	}
-	if start == "" || end == "" {
+	if cfg.Start == "" || cfg.End == "" {
 		return errors.New("peak_rate_enabled 为 true 时 peak_start 与 peak_end 必填")
 	}
-	st, okStart := parseMinutes(start)
+	st, okStart := parseMinutes(cfg.Start)
 	if !okStart {
-		return fmt.Errorf("peak_start 格式应为 HH:MM，got %q", start)
+		return fmt.Errorf("peak_start 格式应为 HH:MM，got %q", cfg.Start)
 	}
-	en, okEnd := parseMinutes(end)
+	en, okEnd := parseMinutes(cfg.End)
 	if !okEnd {
-		return fmt.Errorf("peak_end 格式应为 HH:MM，got %q", end)
+		return fmt.Errorf("peak_end 格式应为 HH:MM，got %q", cfg.End)
 	}
 	if st >= en {
 		return errors.New("peak_end 必须大于 peak_start（不支持跨天区间，如 22:00-02:00）")
 	}
-	if multiplier < 0 {
+	if cfg.Multiplier < 0 || math.IsNaN(cfg.Multiplier) || math.IsInf(cfg.Multiplier, 0) {
 		return errors.New("peak_rate_multiplier 不能为负")
+	}
+	if cfg.OffPeakMultiplier < 0 || math.IsNaN(cfg.OffPeakMultiplier) || math.IsInf(cfg.OffPeakMultiplier, 0) {
+		return errors.New("off_peak_rate_multiplier 不能为负")
+	}
+	for pattern, rule := range cfg.ModelMultipliers {
+		if err := validatePeakModelPattern(pattern); err != nil {
+			return err
+		}
+		if !validPeakModelRuleValue(rule) {
+			return fmt.Errorf("peak_model_multipliers[%q] 倍率不能为负", pattern)
+		}
 	}
 	return nil
 }
 
+func validatePeakModelPattern(pattern string) error {
+	if pattern == "" {
+		return errors.New("peak_model_multipliers 的模型名不能为空")
+	}
+	if pattern == "*" {
+		return errors.New("peak_model_multipliers 不允许裸 \"*\"，请直接配置 peak_rate_multiplier")
+	}
+	if idx := strings.IndexByte(pattern, '*'); idx >= 0 && idx != len(pattern)-1 {
+		return fmt.Errorf("peak_model_multipliers 的模型名 %q 仅支持末尾 * 通配符", pattern)
+	}
+	return nil
+}
+
+// NormalizePeakModelMultipliers 清洗分模型分时倍率：key trim、丢弃非法 pattern
+// （空、裸 "*"、* 不在末尾）与任一字段非有限/负的规则；全空返回 nil。读侧 peakModelRule
+// 亦有护栏，本函数用于写路径收口。
+func NormalizePeakModelMultipliers(in map[string]PeakModelMultiplierRule) map[string]PeakModelMultiplierRule {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]PeakModelMultiplierRule, len(in))
+	for pattern, rule := range in {
+		pattern = strings.TrimSpace(pattern)
+		if validatePeakModelPattern(pattern) != nil {
+			continue
+		}
+		if !validPeakModelRuleValue(rule) {
+			continue
+		}
+		out[pattern] = rule
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
 // NormalizePeakRateConfig 归一化最终落库的高峰配置，CreateGroup 与 UpdateGroup 两条写路径共用（唯一收口）：
-//   - 非订阅类型分组不携带任何高峰配置，一律清空（enabled=false、窗口置空、倍率归 1.0）；
+//   - 非订阅类型分组不携带任何高峰配置，一律清空（enabled=false、窗口置空、倍率归 1.0、分模型 map 置 nil）；
 //   - 订阅分组关闭高峰时保留已配置的合法窗口（便于临时停用后再启用），
-//     但清掉无法解析的脏字符串与负倍率，避免脏数据入库。
+//     但清掉无法解析的脏字符串、负倍率与非法分模型项，避免脏数据入库。
 //
 // 与 ValidatePeakRateConfig 的分工：enabled=true 时校验已保证各字段合法，本函数为无操作；
 // enabled=false 时校验放行，由本函数兜底清洗。调用顺序为先归一化、后校验，
 // 使"订阅转标准"这类更新能静默清空高峰配置而不是被校验拒绝。
-func NormalizePeakRateConfig(subscriptionType string, enabled bool, start, end string, multiplier float64) (bool, string, string, float64) {
-	if !IsSubscriptionTypeLiteral(subscriptionType) {
-		return false, "", "", 1.0
+func NormalizePeakRateConfig(cfg PeakRateConfig) PeakRateConfig {
+	if !IsSubscriptionTypeLiteral(cfg.SubscriptionType) {
+		return PeakRateConfig{Enabled: false, Multiplier: 1.0, OffPeakMultiplier: 1.0}
 	}
-	if !enabled {
-		if _, ok := parseMinutes(start); !ok {
-			start = ""
+	if !cfg.Enabled {
+		if _, ok := parseMinutes(cfg.Start); !ok {
+			cfg.Start = ""
 		}
-		if _, ok := parseMinutes(end); !ok {
-			end = ""
+		if _, ok := parseMinutes(cfg.End); !ok {
+			cfg.End = ""
 		}
-		if multiplier < 0 {
-			multiplier = 1.0
+		if cfg.Multiplier < 0 || math.IsNaN(cfg.Multiplier) || math.IsInf(cfg.Multiplier, 0) {
+			cfg.Multiplier = 1.0
+		}
+		if cfg.OffPeakMultiplier < 0 || math.IsNaN(cfg.OffPeakMultiplier) || math.IsInf(cfg.OffPeakMultiplier, 0) {
+			cfg.OffPeakMultiplier = 1.0
 		}
 	}
-	return enabled, start, end, multiplier
+	cfg.ModelMultipliers = NormalizePeakModelMultipliers(cfg.ModelMultipliers)
+	return cfg
+}
+
+// groupPeakFactor 返回 apiKey 所属分组的分时倍率因子，供计费路径按模型现算
+// （主计费与 response_model 重定价共用同一因子规则）。
+func groupPeakFactor(apiKey *APIKey, model string, now time.Time) float64 {
+	if apiKey == nil || apiKey.Group == nil {
+		return 1.0
+	}
+	return apiKey.Group.PeakMultiplierAt(model, now)
 }
 
 // computePeakAwareMultipliers 把"基础 token 倍率 base"（已含系统/分组/用户级倍率，但不含高峰）
 // 拆分为最终 token 倍率与图片按次倍率：图片按次倍率基于 base 现算、不受高峰影响；token 倍率在 base 上叠加高峰因子。
 // gateway_service.recordUsageCore 与 openai_gateway_service.RecordUsage 共用此函数，
 // 锁死"高峰因子只乘入 token 倍率、图片按次倍率不受影响"这一叠加顺序——任何调换都会被 group_peak_rate_test 覆盖。
-func computePeakAwareMultipliers(apiKey *APIKey, base float64, now time.Time) (text, image float64) {
+func computePeakAwareMultipliers(apiKey *APIKey, model string, base float64, now time.Time) (text, image float64) {
 	image = resolveImageRateMultiplier(apiKey, base)
-	peak := 1.0
-	if apiKey != nil && apiKey.Group != nil {
-		peak = apiKey.Group.PeakMultiplierAt(now)
-	}
-	text = base * peak
+	text = base * groupPeakFactor(apiKey, model, now)
 	return
 }
 
