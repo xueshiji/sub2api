@@ -18,6 +18,7 @@ export interface UserAvailableGroup {
   peak_start: string
   peak_end: string
   peak_rate_multiplier: number
+  off_peak_rate_multiplier: number
   /** true = 专属分组（小范围授权）；false = 公开分组。 */
   is_exclusive: boolean
 }

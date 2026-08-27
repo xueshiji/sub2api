@@ -843,9 +843,11 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 		cacheTTLOverridden = (result.Usage.CacheCreation5mTokens + result.Usage.CacheCreation1hTokens) > 0
 	}
 
-	multiplier, imageMultiplier, pricingAt := s.recordUsageMultipliers(ctx, apiKey, user, input.PricingAt)
+	baseMultiplier, imageMultiplier, pricingAt := s.recordUsageMultipliers(ctx, apiKey, user, input.PricingAt)
 	billingModel := s.recordUsageBillingModel(ctx, apiKey, result, input.ChannelUsageFields)
 	cacheStorageCost := s.cacheStorageCost(result, billingModel)
+	// 分模型高峰倍率按计费模型匹配，须在 billingModel 敲定后计算。
+	multiplier := baseMultiplier * groupPeakFactor(apiKey, billingModel, pricingAt)
 
 	// 确定 RequestedModel（渠道映射前的原始模型）
 	requestedModel := result.Model
@@ -866,7 +868,9 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 		result.ImageCount > 0 || result.AudioUsage != nil || result.SearchCount > 0 || result.CacheStorageTokenHours > 0,
 	); responseModel != "" && !strings.EqualFold(responseModel, strings.TrimSpace(billingModel)) {
 		if identified, responseChannelPriced := s.hasIdentifiedResponseModelPricing(ctx, responseModel, apiKey); identified {
-			responseCost := s.calculateRecordUsageCost(ctx, result, apiKey, responseModel, multiplier, imageMultiplier, pricingAt)
+			// 分模型高峰倍率随计费模型变化，重定价时按 responseModel 重算 peak 因子。
+			responseMultiplier := baseMultiplier * groupPeakFactor(apiKey, responseModel, pricingAt)
+			responseCost := s.calculateRecordUsageCost(ctx, result, apiKey, responseModel, responseMultiplier, imageMultiplier, pricingAt)
 			baselineChannelPriced := s.resolveChannelPricing(ctx, billingModel, apiKey) != nil
 			if responseModelBillingAdoptable(cost, responseCost, baselineChannelPriced, responseChannelPriced) {
 				// billingModel 到此为止只是定价查表的入参，后续流程只消费 cost，
@@ -955,8 +959,9 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 	return nil
 }
 
-// recordUsageMultipliers 返回 token / 图片售价倍率（用户专属 > 分组默认 > 系统默认，token 倍率叠加高峰因子）
-// 与计价时刻；pricingAt 为零值时取当前时刻。
+// recordUsageMultipliers 返回基础 token 倍率（用户专属 > 分组默认 > 系统默认）与图片售价倍率，
+// 以及计价时刻；pricingAt 为零值时取当前时刻。高峰/分模型因子由调用方在计费模型敲定后叠加，
+// 以免污染 user:group 倍率缓存。
 func (s *GatewayService) recordUsageMultipliers(ctx context.Context, apiKey *APIKey, user *User, pricingAt time.Time) (float64, float64, time.Time) {
 	multiplier := 1.0
 	if s.cfg != nil {
@@ -968,12 +973,10 @@ func (s *GatewayService) recordUsageMultipliers(ctx context.Context, apiKey *API
 			multiplier = s.ResolveUserGroupRateMultiplier(ctx, user.ID, *apiKey.GroupID, multiplier)
 		}
 	}
-	// 高峰因子按请求时刻现算，不并入 getUserGroupRateMultiplier，以免污染 user:group 倍率缓存。
 	if pricingAt.IsZero() {
 		pricingAt = timezone.Now()
 	}
-	multiplier, imageMultiplier := computePeakAwareMultipliers(apiKey, multiplier, pricingAt)
-	return multiplier, imageMultiplier, pricingAt
+	return multiplier, resolveImageRateMultiplier(apiKey, multiplier), pricingAt
 }
 
 // recordUsageBillingModel 按计费模型来源、composite 规则与无价兜底确定计费模型。
@@ -1042,8 +1045,9 @@ func (s *GatewayService) QuoteUsageCost(ctx context.Context, input *RecordUsageI
 	if user == nil {
 		user = input.APIKey.User
 	}
-	multiplier, imageMultiplier, pricingAt := s.recordUsageMultipliers(ctx, input.APIKey, user, input.PricingAt)
+	baseMultiplier, imageMultiplier, pricingAt := s.recordUsageMultipliers(ctx, input.APIKey, user, input.PricingAt)
 	billingModel := s.recordUsageBillingModel(ctx, input.APIKey, input.Result, input.ChannelUsageFields)
+	multiplier := baseMultiplier * groupPeakFactor(input.APIKey, billingModel, pricingAt)
 	cost := s.calculateRecordUsageCost(ctx, input.Result, input.APIKey, billingModel, multiplier, imageMultiplier, pricingAt)
 	if cost == nil {
 		return 0

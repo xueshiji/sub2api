@@ -152,7 +152,7 @@ func TestBuildKeyBillingInfoAppliesPeakMultiplier(t *testing.T) {
 	now := time.Date(2026, time.July, 13, 10, 0, 0, 0, timezone.Location())
 	userRate := 0.8
 
-	got := buildKeyBillingInfo(apiKey, userRate, now)
+	got := buildKeyBillingInfo(apiKey, userRate, "", now)
 
 	require.Equal(t, 1.2, got.GroupRateMultiplier)
 	require.NotNil(t, got.UserRateMultiplier)
@@ -188,6 +188,50 @@ func TestBuildKeyBillingInfoAppliesPeakMultiplier(t *testing.T) {
 	}
 }
 
+func TestBuildKeyBillingInfoAppliesPerModelPeakMultiplier(t *testing.T) {
+	groupID := int64(7)
+	apiKey := &service.APIKey{
+		GroupID: &groupID,
+		Group: &service.Group{
+			ID:                 groupID,
+			RateMultiplier:     1.2,
+			SubscriptionType:   service.SubscriptionTypeSubscription,
+			PeakRateEnabled:    true,
+			PeakStart:          "09:00",
+			PeakEnd:            "18:00",
+			PeakRateMultiplier: 1.5,
+			OffPeakMultiplier:  0.6,
+			PeakModelMultipliers: map[string]service.PeakModelMultiplierRule{
+				"claude-opus-*": {Peak: 2.5, OffPeak: 0.6},
+			},
+		},
+	}
+	inPeak := time.Date(2026, time.July, 13, 10, 0, 0, 0, timezone.Location())
+
+	t.Run("matching model uses per-model multiplier", func(t *testing.T) {
+		got := buildKeyBillingInfo(apiKey, apiKey.Group.RateMultiplier, "claude-opus-4-20250514", inPeak)
+		require.NotNil(t, got.AppliedPeakMultiplier)
+		require.Equal(t, 2.5, *got.AppliedPeakMultiplier)
+		require.NotNil(t, got.PeakModelMultipliers)
+		require.Equal(t, service.PeakModelMultiplierRule{Peak: 2.5, OffPeak: 0.6}, got.PeakModelMultipliers["claude-opus-*"])
+	})
+
+	t.Run("unmatched model falls back to default peak multiplier", func(t *testing.T) {
+		got := buildKeyBillingInfo(apiKey, apiKey.Group.RateMultiplier, "claude-sonnet-4", inPeak)
+		require.NotNil(t, got.AppliedPeakMultiplier)
+		require.Equal(t, 1.5, *got.AppliedPeakMultiplier)
+	})
+
+	t.Run("off-peak window applies off-peak multiplier", func(t *testing.T) {
+		offPeak := time.Date(2026, time.July, 13, 20, 0, 0, 0, timezone.Location())
+		got := buildKeyBillingInfo(apiKey, apiKey.Group.RateMultiplier, "claude-opus-4-20250514", offPeak)
+		require.NotNil(t, got.OffPeakRateMultiplier)
+		require.Equal(t, 0.6, *got.OffPeakRateMultiplier)
+		require.NotNil(t, got.AppliedPeakMultiplier)
+		require.Equal(t, 0.6, *got.AppliedPeakMultiplier)
+	})
+}
+
 func TestKeyBillingInfoJSONKeepsZeroPeakMultiplierWhenEnabled(t *testing.T) {
 	groupID := int64(7)
 	apiKey := &service.APIKey{
@@ -202,7 +246,7 @@ func TestKeyBillingInfoJSONKeepsZeroPeakMultiplierWhenEnabled(t *testing.T) {
 		},
 	}
 	now := time.Date(2026, time.July, 13, 12, 0, 0, 0, timezone.Location())
-	encoded, err := json.Marshal(buildKeyBillingInfo(apiKey, apiKey.Group.RateMultiplier, now))
+	encoded, err := json.Marshal(buildKeyBillingInfo(apiKey, apiKey.Group.RateMultiplier, "", now))
 	require.NoError(t, err)
 
 	var fields map[string]json.RawMessage

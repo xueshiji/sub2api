@@ -61,6 +61,7 @@ type userAvailableGroup struct {
 	PeakStart          string  `json:"peak_start"`
 	PeakEnd            string  `json:"peak_end"`
 	PeakRateMultiplier float64 `json:"peak_rate_multiplier"`
+	OffPeakMultiplier  float64 `json:"off_peak_rate_multiplier"`
 	IsExclusive        bool    `json:"is_exclusive"`
 
 	// 不对外输出；List 按请求语言把 Name 换成译文后丢弃。
@@ -276,6 +277,7 @@ func filterUserVisibleGroups(
 			PeakStart:          g.PeakStart,
 			PeakEnd:            g.PeakEnd,
 			PeakRateMultiplier: g.PeakRateMultiplier,
+			OffPeakMultiplier:  g.OffPeakMultiplier,
 			IsExclusive:        g.IsExclusive,
 		})
 	}

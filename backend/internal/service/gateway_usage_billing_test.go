@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 )
 
 // TestBuildUsageBillingCommand_TokenSubscriptionSetsSubscriptionTokens locks in the
@@ -94,6 +95,109 @@ func TestSubscriptionTokensFormulaConsistency(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestGatewayRecordUsage_TokenSubscriptionMetersPerModelDualRate 锁定 token 型订阅
+// 分组的分模型分时倍率全链路：RecordUsage → PeakMultiplierAt(rule.Peak/OffPeak) →
+// computeSubscriptionTokens → buildUsageBillingCommand。链路上任一环把 token 型分组
+// 排除在分时倍率外（或快照/透传丢失字段），SubscriptionTokens 都会退化为未加倍率的值。
+func TestGatewayRecordUsage_TokenSubscriptionMetersPerModelDualRate(t *testing.T) {
+	const groupID = int64(801)
+	newTokenPeakGroup := func() *Group {
+		return &Group{
+			ID:               groupID,
+			Platform:         PlatformAnthropic,
+			Status:           StatusActive,
+			Hydrated:         true,
+			RateMultiplier:   1,
+			SubscriptionType: SubscriptionTypeSubscriptionToken,
+			PeakRateEnabled:  true,
+			PeakStart:        "14:00",
+			PeakEnd:          "18:00",
+			// 命中 claude-* 规则时 peak/off_peak 整体优先于分组默认倍率。
+			PeakRateMultiplier:   2,
+			OffPeakMultiplier:    1,
+			PeakModelMultipliers: map[string]PeakModelMultiplierRule{"claude-*": {Peak: 2, OffPeak: 0.4}},
+		}
+	}
+
+	// 2026-06-29 为周一；窗口 [14:00, 18:00)。
+	at := func(hour, min int) time.Time {
+		return time.Date(2026, 6, 29, hour, min, 0, 0, timezone.Location())
+	}
+
+	record := func(t *testing.T, model string, input, output int, pricingAt time.Time) *UsageBillingCommand {
+		t.Helper()
+		usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+		billingRepo := &openAIRecordUsageBillingRepoStub{result: &UsageBillingApplyResult{Applied: true}}
+		svc := newGatewayRecordUsageServiceWithBillingRepoForTest(
+			usageRepo, billingRepo, &openAIRecordUsageUserRepoStub{}, &openAIRecordUsageSubRepoStub{})
+
+		err := svc.RecordUsage(context.Background(), &RecordUsageInput{
+			Result: &ForwardResult{
+				RequestID: "gateway_token_sub_per_model_dual_rate",
+				Usage:     ClaudeUsage{InputTokens: input, OutputTokens: output},
+				Model:     model,
+				Duration:  time.Second,
+			},
+			APIKey: &APIKey{
+				ID:      501,
+				Quota:   100,
+				GroupID: ptrInt64(groupID),
+				Group:   newTokenPeakGroup(),
+			},
+			User:         &User{ID: 601},
+			Account:      &Account{ID: 701, Type: AccountTypeAPIKey},
+			Subscription: &UserSubscription{ID: 9},
+			PricingAt:    pricingAt,
+		})
+		if err != nil {
+			t.Fatalf("RecordUsage: %v", err)
+		}
+		if billingRepo.lastCmd == nil {
+			t.Fatal("billing command 未生成")
+		}
+		return billingRepo.lastCmd
+	}
+
+	t.Run("工作日窗口外命中规则按 off_peak 计量", func(t *testing.T) {
+		cmd := record(t, "claude-sonnet-4", 100, 5, at(20, 0))
+		// 105 tokens × (分组倍率 1 × 规则 off_peak 0.4) = 42
+		if cmd.SubscriptionTokens != 42 {
+			t.Errorf("SubscriptionTokens = %d, 期望 42（105 × 0.4）", cmd.SubscriptionTokens)
+		}
+		if !cmd.IsSubscriptionToken {
+			t.Error("token 型订阅应为 IsSubscriptionToken")
+		}
+		if cmd.SubscriptionCost != 0 {
+			t.Errorf("token 型订阅不应记 USD，SubscriptionCost = %v", cmd.SubscriptionCost)
+		}
+	})
+
+	t.Run("工作日窗口内命中规则按 peak 计量", func(t *testing.T) {
+		cmd := record(t, "claude-sonnet-4", 100, 5, at(15, 30))
+		if cmd.SubscriptionTokens != 210 {
+			t.Errorf("SubscriptionTokens = %d, 期望 210（105 × 2）", cmd.SubscriptionTokens)
+		}
+	})
+
+	t.Run("未命中规则的模型回落分组默认非高峰倍率", func(t *testing.T) {
+		cmd := record(t, "qwen-max", 100, 5, at(20, 0))
+		if cmd.SubscriptionTokens != 105 {
+			t.Errorf("SubscriptionTokens = %d, 期望 105（未命中规则 × 默认 off_peak 1）", cmd.SubscriptionTokens)
+		}
+	})
+
+	t.Run("小数倍率向零截断，小额请求计量为 0", func(t *testing.T) {
+		cmd := record(t, "claude-sonnet-4", 2, 0, at(20, 0))
+		// 2 × 0.4 = 0.8 → int64 截断为 0：当前计量口径下小额请求不产生订阅用量。
+		if cmd.SubscriptionTokens != 0 {
+			t.Errorf("SubscriptionTokens = %d, 期望 0（2 × 0.4 截断）", cmd.SubscriptionTokens)
+		}
+		if cmd.IsSubscriptionToken {
+			t.Error("计量为 0 时不应标记 IsSubscriptionToken")
+		}
+	})
 }
 
 type tokenFinalizeCacheStub struct {

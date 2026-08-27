@@ -2,9 +2,15 @@ import { enableAutoUnmount, mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import SubscriptionProgressMini from '../SubscriptionProgressMini.vue'
 const store = vi.hoisted(() => ({ activeSubscriptions: [] as unknown[], hasActiveSubscriptions: true, fetchActiveSubscriptions: vi.fn().mockResolvedValue(undefined) }))
-vi.mock('@/stores', () => ({ useSubscriptionStore: () => store }))
+vi.mock('@/stores', () => ({
+  useSubscriptionStore: () => store,
+  useAppStore: () => ({ cachedPublicSettings: { server_utc_offset: '+08:00' } })
+}))
 vi.mock('@/utils/featureFlags', () => ({ FeatureFlags: { subscription: 'subscription' }, isFeatureFlagEnabled: () => true }))
-vi.mock('vue-i18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
+vi.mock('vue-i18n', () => ({
+  useI18n: () => ({ t: (key: string) => key }),
+  createI18n: () => ({ global: { t: (key: string) => key } })
+}))
 enableAutoUnmount(afterEach)
 beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date(2026, 8, 22, 12)) })
 afterEach(() => vi.useRealTimers())

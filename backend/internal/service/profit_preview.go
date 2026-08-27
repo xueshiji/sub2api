@@ -102,7 +102,9 @@ func PreviewProfitAdmission(inputs []ProfitPreviewGroupInput, evalAt time.Time) 
 			report.RemainingByModelMinD[model] = 0
 		}
 
-		peak := group.PeakMultiplierAt(evalAt)
+		// 报告级 D/阈值按默认倍率口径（model 为空），模型维度的准入差异体现在
+		// RemainingByModel：分模型高峰倍率下每个模型有自己的阈值。
+		peak := group.PeakMultiplierAt("", evalAt)
 		defaultD := group.RateMultiplier * peak
 		minRate := group.RateMultiplier
 		for _, override := range in.UserOverrides {
@@ -122,22 +124,36 @@ func PreviewProfitAdmission(inputs []ProfitPreviewGroupInput, evalAt time.Time) 
 		report.ThresholdDefault = thresholdDefault
 		report.ThresholdMinD = thresholdMinD
 
+		// 分模型阈值：thresholdByModel[model] 为该模型默认口径阈值，minD 版本在
+		// 账号判断时按最低有效 D 折算（两者比例与分组级一致，同为 (1-deduction)）。
+		thresholdByModel := make(map[string]float64, len(in.Models))
+		thresholdMinDByModel := make(map[string]float64, len(in.Models))
+		for _, model := range in.Models {
+			modelPeak := group.PeakMultiplierAt(model, evalAt)
+			thresholdByModel[model] = clampProfitControlThreshold(group.RateMultiplier * modelPeak * (1 - deduction))
+			thresholdMinDByModel[model] = clampProfitControlThreshold(minRate * modelPeak * (1 - deduction))
+		}
+
 		for _, account := range in.Accounts {
 			if account == nil {
 				continue
 			}
 			verdict := previewAccountProfitAdmission(account, effectiveGate, thresholdDefault, thresholdMinD, evalAt)
-			admittedDefault := verdict.Class == ProfitPreviewClassAdmitted
-			admittedMinD := admittedDefault && !verdict.RejectedUnderMinD
+			validRate := account.RateMultiplier != nil &&
+				!math.IsNaN(*account.RateMultiplier) &&
+				!math.IsInf(*account.RateMultiplier, 0) &&
+				*account.RateMultiplier >= 0
 			for _, model := range in.Models {
 				if !account.IsModelSupported(model) {
 					continue
 				}
 				verdict.SupportedModels = append(verdict.SupportedModels, model)
-				if admittedDefault {
+				// 与账号级 verdict 同语义：门未启用或倍率非法时全部计入/全部不计入
+				//（RemainingByModelMinD 在门未启用时同样全计），启用时按该模型自身阈值。
+				if !effectiveGate || (validRate && !profitControlOverThreshold(*account.RateMultiplier, thresholdByModel[model])) {
 					report.RemainingByModel[model]++
 				}
-				if admittedMinD {
+				if !effectiveGate || (validRate && !profitControlOverThreshold(*account.RateMultiplier, thresholdMinDByModel[model])) {
 					report.RemainingByModelMinD[model]++
 				}
 			}

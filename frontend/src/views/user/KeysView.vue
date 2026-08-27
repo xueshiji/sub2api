@@ -173,6 +173,8 @@
                   :peak-start="row.group.peak_start"
                   :peak-end="row.group.peak_end"
                   :peak-rate-multiplier="row.group.peak_rate_multiplier"
+                  :off-peak-rate-multiplier="row.group.off_peak_rate_multiplier"
+                  :peak-model-multipliers="row.group.peak_model_multipliers"
                 />
                 <span v-else class="text-sm text-gray-400 dark:text-dark-500">{{
                   t('keys.noGroup')
@@ -568,6 +570,8 @@
                 :peak-start="(option as unknown as GroupOption).peakStart"
                 :peak-end="(option as unknown as GroupOption).peakEnd"
                 :peak-rate-multiplier="(option as unknown as GroupOption).peakRateMultiplier"
+                :off-peak-rate-multiplier="(option as unknown as GroupOption).offPeakRateMultiplier"
+                :peak-model-multipliers="(option as unknown as GroupOption).peakModelMultipliers"
               />
               <span v-else class="text-gray-400">{{ t('keys.selectGroup') }}</span>
             </template>
@@ -582,6 +586,8 @@
                 :peak-start="(option as unknown as GroupOption).peakStart"
                 :peak-end="(option as unknown as GroupOption).peakEnd"
                 :peak-rate-multiplier="(option as unknown as GroupOption).peakRateMultiplier"
+                :off-peak-rate-multiplier="(option as unknown as GroupOption).offPeakRateMultiplier"
+                :peak-model-multipliers="(option as unknown as GroupOption).peakModelMultipliers"
                 :description="(option as unknown as GroupOption).description"
                 :selected="selected"
               />
@@ -1190,6 +1196,8 @@
               :peak-start="option.peakStart"
               :peak-end="option.peakEnd"
               :peak-rate-multiplier="option.peakRateMultiplier"
+              :off-peak-rate-multiplier="option.offPeakRateMultiplier"
+              :peak-model-multipliers="option.peakModelMultipliers"
               :description="option.description"
               :selected="
                 selectedKeyForGroup?.group_id === option.value ||
@@ -1263,6 +1271,8 @@ interface GroupOption {
   peakStart: string
   peakEnd: string
   peakRateMultiplier: number
+  offPeakRateMultiplier?: number
+  peakModelMultipliers?: Record<string, { peak: number; off_peak: number }> | null
   subscriptionType: SubscriptionType
   platform: GroupPlatform
 }
@@ -1532,6 +1542,8 @@ const groupOptions = computed(() =>
     peakStart: group.peak_start,
     peakEnd: group.peak_end,
     peakRateMultiplier: group.peak_rate_multiplier,
+    offPeakRateMultiplier: group.off_peak_rate_multiplier,
+    peakModelMultipliers: group.peak_model_multipliers,
     subscriptionType: group.subscription_type,
     platform: group.platform
   }))

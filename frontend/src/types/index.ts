@@ -627,6 +627,8 @@ export interface Group {
   peak_start: string
   peak_end: string
   peak_rate_multiplier: number
+  off_peak_rate_multiplier: number
+  peak_model_multipliers?: Record<string, { peak: number; off_peak: number }> | null
   // Claude Code 客户端限制
   claude_code_only: boolean
   fallback_group_id: number | null
@@ -854,6 +856,8 @@ export interface CreateGroupRequest {
   peak_start?: string
   peak_end?: string
   peak_rate_multiplier?: number
+  off_peak_rate_multiplier?: number
+  peak_model_multipliers?: Record<string, { peak: number; off_peak: number }>
   // 分组利润控制（五个 token 平台；margin/buffer 为小数）
   profit_control_enabled?: boolean
   profit_min_margin?: number
@@ -926,6 +930,8 @@ export interface UpdateGroupRequest {
   peak_start?: string
   peak_end?: string
   peak_rate_multiplier?: number
+  off_peak_rate_multiplier?: number
+  peak_model_multipliers?: Record<string, { peak: number; off_peak: number }>
   // 分组利润控制（五个 token 平台；margin/buffer 为小数）
   profit_control_enabled?: boolean
   profit_min_margin?: number
@@ -1108,6 +1114,8 @@ export interface UpstreamBillingData {
   peak_start?: string
   peak_end?: string
   peak_rate_multiplier?: number
+  off_peak_rate_multiplier?: number
+  peak_model_multipliers?: Record<string, { peak: number; off_peak: number }>
   applied_peak_multiplier?: number
   effective_rate_multiplier: number
   timezone?: string

@@ -709,6 +709,7 @@ func TestUpstreamBillingRateAtHandlesDST(t *testing.T) {
 		"peak_rate_multiplier":     2.0,
 		"timezone":                 "America/New_York",
 	}
+	// 2026-03-08 为周日（美国 DST 跳变日）：周末不应用高峰窗口，缺省非高峰倍率按 1.0。
 	beforeJump := time.Date(2026, time.March, 8, 6, 30, 0, 0, time.UTC)
 	afterJump := time.Date(2026, time.March, 8, 7, 30, 0, 0, time.UTC)
 
@@ -716,6 +717,12 @@ func TestUpstreamBillingRateAtHandlesDST(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, 1.0, rate)
 	rate, ok = upstreamBillingRateAt(data, afterJump)
+	require.True(t, ok)
+	require.Equal(t, 1.0, rate)
+
+	// 周一 07:30 UTC = 纽约 03:30（EDT），处于 [02:00, 04:00) 窗口内：本地时间换算仍生效。
+	weekday := time.Date(2026, time.March, 9, 7, 30, 0, 0, time.UTC)
+	rate, ok = upstreamBillingRateAt(data, weekday)
 	require.True(t, ok)
 	require.Equal(t, 2.0, rate)
 }
@@ -1301,4 +1308,67 @@ func TestUpstreamBillingProbeLeaderLockCoversStaggeredInstancesInCadenceWindow(t
 	staggered.SetLeaderLock(cache, nil)
 	require.NoError(t, staggered.RunDue(context.Background()))
 	require.Equal(t, int64(1), upstream.calls.Load(), "a staggered instance must not start a second batch inside the cadence window")
+}
+
+func TestUpstreamBillingPeakMultiplierAtOffPeakAndWeekend(t *testing.T) {
+	base := func(extra map[string]any) map[string]any {
+		data := map[string]any{
+			"billing_scope":            "token",
+			"resolved_rate_multiplier": 1.0,
+			"peak_rate_enabled":        true,
+			"peak_start":               "09:00",
+			"peak_end":                 "18:00",
+			"peak_rate_multiplier":     2.0,
+			"timezone":                 "UTC",
+		}
+		for k, v := range extra {
+			data[k] = v
+		}
+		return data
+	}
+	// 2026-07-13 为周一、2026-07-18 为周六。
+	weekdayInWindow := time.Date(2026, time.July, 13, 10, 0, 0, 0, time.UTC)
+	weekdayOffWindow := time.Date(2026, time.July, 13, 20, 0, 0, 0, time.UTC)
+	saturday := time.Date(2026, time.July, 18, 10, 0, 0, 0, time.UTC)
+
+	t.Run("missing off-peak falls back to one", func(t *testing.T) {
+		data := base(nil)
+		rate, ok := upstreamBillingRateAt(data, weekdayOffWindow)
+		require.True(t, ok)
+		require.Equal(t, 1.0, rate)
+	})
+
+	t.Run("declared off-peak applies outside window and on weekend", func(t *testing.T) {
+		data := base(map[string]any{"off_peak_rate_multiplier": 0.5})
+		rate, ok := upstreamBillingRateAt(data, weekdayOffWindow)
+		require.True(t, ok)
+		require.Equal(t, 0.5, rate)
+		rate, ok = upstreamBillingRateAt(data, saturday)
+		require.True(t, ok)
+		require.Equal(t, 0.5, rate)
+		rate, ok = upstreamBillingRateAt(data, weekdayInWindow)
+		require.True(t, ok)
+		require.Equal(t, 2.0, rate)
+	})
+
+	t.Run("negative off-peak marks data unusable", func(t *testing.T) {
+		data := base(map[string]any{"off_peak_rate_multiplier": -0.5})
+		_, ok := upstreamBillingRateAt(data, weekdayOffWindow)
+		require.False(t, ok)
+	})
+}
+
+func TestUpstreamBillingProbeResponseCarriesOffPeakMultiplier(t *testing.T) {
+	// 非高峰时刻探测：上游声明 off_peak 后快照 data 必须携带且 applied 校验通过。
+	body := `{
+		"object":"sub2api.key_billing","schema_version":1,"billing_scope":"token",
+		"group_rate_multiplier":0.8,"resolved_rate_multiplier":0.8,
+		"peak_rate_enabled":true,"peak_start":"09:00","peak_end":"18:00",
+		"peak_rate_multiplier":1.5,"off_peak_rate_multiplier":0.5,
+		"applied_peak_multiplier":0.5,"effective_rate_multiplier":0.4,
+		"timezone":"UTC","observed_at":"2026-07-13T20:00:00Z"
+	}`
+	data, err := parseUpstreamBillingProbeResponse([]byte(body))
+	require.NoError(t, err)
+	require.Equal(t, 0.5, data["off_peak_rate_multiplier"])
 }

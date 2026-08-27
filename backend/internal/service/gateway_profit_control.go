@@ -10,7 +10,9 @@ import (
 // withGatewayProfitControlGate installs the gate only for explicitly marked
 // token requests. This keeps media, metadata, and models-list paths outside
 // the profit-control surface by construction.
-func (s *GatewayService) withGatewayProfitControlGate(ctx context.Context, groupID *int64) context.Context {
+// requestedModel 用于分模型高峰倍率：门的 D 固定于请求开始时刻的请求模型（渠道映射前），
+// 而计费路径按映射后的 billingModel 匹配——调度前无法消除的固有近似；空串走默认倍率。
+func (s *GatewayService) withGatewayProfitControlGate(ctx context.Context, groupID *int64, requestedModel string) context.Context {
 	if _, ok := gatewayTokenRequestPricingAtFromContext(ctx); !ok || groupID == nil || *groupID <= 0 {
 		return ctx
 	}
@@ -41,7 +43,7 @@ func (s *GatewayService) withGatewayProfitControlGate(ctx context.Context, group
 	if userID, _ := ctx.Value(ctxkey.UserID).(int64); userID > 0 {
 		downstream = s.ResolveUserGroupRateMultiplier(ctx, userID, billingGroup.ID, billingGroup.RateMultiplier)
 	}
-	downstream *= billingGroup.PeakMultiplierAt(pricingAt)
+	downstream *= billingGroup.PeakMultiplierAt(requestedModel, pricingAt)
 	threshold := clampProfitControlThreshold(downstream * (1 - group.ProfitMinMargin - group.ProfitSafetyBuffer))
 
 	gate := &openAIProfitControlGate{

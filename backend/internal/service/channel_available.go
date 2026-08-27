@@ -24,6 +24,7 @@ type AvailableGroupRef struct {
 	PeakStart          string
 	PeakEnd            string
 	PeakRateMultiplier float64
+	OffPeakMultiplier  float64
 	IsExclusive        bool
 }
 
@@ -75,6 +76,7 @@ func (s *ChannelService) ListAvailable(ctx context.Context) ([]AvailableChannel,
 			PeakStart:          g.PeakStart,
 			PeakEnd:            g.PeakEnd,
 			PeakRateMultiplier: g.PeakRateMultiplier,
+			OffPeakMultiplier:  g.OffPeakMultiplier,
 			IsExclusive:        g.IsExclusive,
 		}
 	}

@@ -9,7 +9,10 @@ vi.mock('@/api/admin', () => ({ adminAPI: {
 } }))
 vi.mock('@/stores/app', () => ({ useAppStore: () => ({ showError: vi.fn(), showSuccess: vi.fn() }) }))
 vi.mock('@/utils/format', () => ({ formatDateTime: (value: string) => value }))
-vi.mock('vue-i18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
+vi.mock('vue-i18n', () => ({
+  useI18n: () => ({ t: (key: string) => key }),
+  createI18n: () => ({ global: { t: (key: string) => key } })
+}))
 enableAutoUnmount(afterEach)
 beforeEach(() => { getKeys.mockReset(); vi.spyOn(console, 'error').mockImplementation(() => {}) })
 afterEach(() => vi.restoreAllMocks())
