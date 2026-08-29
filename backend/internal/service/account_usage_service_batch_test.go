@@ -73,6 +73,9 @@ func (r *usageBatchLogRepoStub) GetUserBreakdownStats(context.Context, time.Time
 func (r *usageBatchLogRepoStub) GetPeakWeightedTokenStats(context.Context, time.Time, time.Time, usagestats.UserBreakdownDimension) ([]usagestats.PeakWeightedTokenItem, error) {
 	return nil, nil
 }
+func (r *usageBatchLogRepoStub) GetPeakWeightedModelBreakdown(context.Context, time.Time, time.Time, usagestats.UserBreakdownDimension) ([]usagestats.PeakWeightedModelDetail, error) {
+	return nil, nil
+}
 func (r *usageBatchLogRepoStub) GetAllGroupUsageSummary(context.Context, time.Time) ([]usagestats.GroupUsageSummary, error) {
 	return nil, nil
 }

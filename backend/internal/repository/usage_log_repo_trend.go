@@ -721,11 +721,14 @@ func (r *usageLogRepository) GetUserBreakdownStats(ctx context.Context, startTim
 // peak_end / peak_rate_multiplier）：请求时刻（服务配置时区）落在所属分组高峰窗口内时，
 // 该行 token 按分组倍率加权，仅周一至周五生效（周六/周日不加权），用于评估峰值资源
 // 占用。同时返回高峰窗口内的原始 input/cache_read/output 及其加权量，供积分消耗
-// （非高峰单价 × 加权量）计算。筛选维度与用户明细分解一致。
+// （非高峰单价 × 加权量）计算；上游命中积分折扣模型的量单独拆出加权量与非高峰
+// 原始量，折扣乘数由前端积分口径应用。筛选维度与用户明细分解一致。
 func (r *usageLogRepository) GetPeakWeightedTokenStats(ctx context.Context, startTime, endTime time.Time, dim usagestats.UserBreakdownDimension) (results []usagestats.PeakWeightedTokenItem, err error) {
 	// CASE 必须在 SUM 内部逐行判定，高峰窗口判定在 scoped CTE 中只写一次；peak_start/
 	// peak_end 允许 H:MM 一位小时，须 lpad 补零到 5 位后字典序才与时间序一致；仅订阅
 	// 类型分组参与加权，周六/周日不加权，与计费侧 Group.PeakMultiplierAt 口径一致。
+	// is_discounted 的模型集合与统一乘数须同前端 peakWeightedReport.ts 的积分折扣表
+	// 保持一致（当前仅 glm-5.3-flash，乘数 1/3）。
 	query := `
 		WITH scoped AS (
 			SELECT
@@ -740,45 +743,13 @@ func (r *usageLogRepository) GetPeakWeightedTokenStats(ctx context.Context, star
 						AND EXTRACT(ISODOW FROM ul.created_at AT TIME ZONE $3) < 6
 						AND to_char(ul.created_at AT TIME ZONE $3, 'HH24:MI') >= lpad(g.peak_start, 5, '0')
 						AND to_char(ul.created_at AT TIME ZONE $3, 'HH24:MI') < lpad(g.peak_end, 5, '0')
-					THEN true ELSE false END AS in_peak
+					THEN true ELSE false END AS in_peak,
+				LOWER(COALESCE(NULLIF(TRIM(ul.upstream_model), ''), ul.model)) IN ('glm-5.3-flash') AS is_discounted
 			FROM usage_logs ul
 			LEFT JOIN groups g ON g.id = NULLIF(ul.group_id, 0)
 			WHERE ul.created_at >= $1 AND ul.created_at < $2`
 	args := []any{startTime, endTime, timezone.Name()}
-
-	if dim.GroupID > 0 {
-		query += fmt.Sprintf(" AND ul.group_id = $%d", len(args)+1)
-		args = append(args, dim.GroupID)
-	}
-	if dim.Model != "" {
-		query += fmt.Sprintf(" AND %s = $%d", resolveModelDimensionExpression(dim.ModelType), len(args)+1)
-		args = append(args, dim.Model)
-	}
-	if dim.UserID > 0 {
-		query += fmt.Sprintf(" AND ul.user_id = $%d", len(args)+1)
-		args = append(args, dim.UserID)
-	}
-	if dim.APIKeyID > 0 {
-		query += fmt.Sprintf(" AND ul.api_key_id = $%d", len(args)+1)
-		args = append(args, dim.APIKeyID)
-	}
-	if dim.AccountID > 0 {
-		query += fmt.Sprintf(" AND ul.account_id = $%d", len(args)+1)
-		args = append(args, dim.AccountID)
-	}
-	if dim.RequestType != nil {
-		condition, conditionArgs := buildRequestTypeFilterConditionWithAlias(len(args)+1, *dim.RequestType, "ul")
-		query += " AND " + condition
-		args = append(args, conditionArgs...)
-	}
-	if dim.Stream != nil {
-		query += fmt.Sprintf(" AND ul.stream = $%d", len(args)+1)
-		args = append(args, *dim.Stream)
-	}
-	if dim.BillingType != nil {
-		query += fmt.Sprintf(" AND ul.billing_type = $%d", len(args)+1)
-		args = append(args, *dim.BillingType)
-	}
+	query, args = appendPeakWeightedDimFilters(query, args, dim)
 
 	query += `
 		)
@@ -796,6 +767,12 @@ func (r *usageLogRepository) GetPeakWeightedTokenStats(ctx context.Context, star
 			COALESCE(SUM(s.input_tokens) FILTER (WHERE s.in_peak), 0) AS peak_input_tokens,
 			COALESCE(SUM(s.cache_read_tokens) FILTER (WHERE s.in_peak), 0) AS peak_cache_read_tokens,
 			COALESCE(SUM(s.output_tokens) FILTER (WHERE s.in_peak), 0) AS peak_output_tokens,
+			COALESCE(SUM(s.input_tokens * CASE WHEN s.in_peak THEN s.peak_multiplier ELSE 1 END) FILTER (WHERE s.is_discounted), 0) AS discounted_weighted_input_tokens,
+			COALESCE(SUM(s.cache_read_tokens * CASE WHEN s.in_peak THEN s.peak_multiplier ELSE 1 END) FILTER (WHERE s.is_discounted), 0) AS discounted_weighted_cache_read_tokens,
+			COALESCE(SUM(s.output_tokens * CASE WHEN s.in_peak THEN s.peak_multiplier ELSE 1 END) FILTER (WHERE s.is_discounted), 0) AS discounted_weighted_output_tokens,
+			COALESCE(SUM(s.input_tokens) FILTER (WHERE s.is_discounted AND NOT s.in_peak), 0) AS discounted_offpeak_input_tokens,
+			COALESCE(SUM(s.cache_read_tokens) FILTER (WHERE s.is_discounted AND NOT s.in_peak), 0) AS discounted_offpeak_cache_read_tokens,
+			COALESCE(SUM(s.output_tokens) FILTER (WHERE s.is_discounted AND NOT s.in_peak), 0) AS discounted_offpeak_output_tokens,
 			COUNT(*) AS requests
 		FROM scoped s
 		LEFT JOIN users u ON u.id = s.user_id
@@ -830,6 +807,12 @@ func (r *usageLogRepository) GetPeakWeightedTokenStats(ctx context.Context, star
 			&row.PeakInputTokens,
 			&row.PeakCacheReadTokens,
 			&row.PeakOutputTokens,
+			&row.DiscountedWeightedInputTokens,
+			&row.DiscountedWeightedCacheReadTokens,
+			&row.DiscountedWeightedOutputTokens,
+			&row.DiscountedOffpeakInputTokens,
+			&row.DiscountedOffpeakCacheReadTokens,
+			&row.DiscountedOffpeakOutputTokens,
 			&row.Requests,
 		); err != nil {
 			return nil, err
@@ -840,6 +823,114 @@ func (r *usageLogRepository) GetPeakWeightedTokenStats(ctx context.Context, star
 		return nil, err
 	}
 	return results, nil
+}
+
+// GetPeakWeightedModelBreakdown 统计每用户 × 上游模型 × 高峰/非高峰的原始 token 明细，
+// 高峰窗口判定口径与 GetPeakWeightedTokenStats 一致；模型取上游模型（upstream_model
+// 为空回落 model，统一小写，避免同一模型因大小写差异拆成多列），供积分报告的
+// 模型分组明细表使用。
+func (r *usageLogRepository) GetPeakWeightedModelBreakdown(ctx context.Context, startTime, endTime time.Time, dim usagestats.UserBreakdownDimension) (results []usagestats.PeakWeightedModelDetail, err error) {
+	query := `
+		WITH scoped AS (
+			SELECT
+				ul.user_id,
+				LOWER(COALESCE(NULLIF(TRIM(ul.upstream_model), ''), ul.model)) AS model,
+				ul.input_tokens,
+				ul.cache_read_tokens,
+				ul.output_tokens,
+				CASE
+					WHEN g.peak_rate_enabled AND g.subscription_type = 'subscription' AND g.peak_start <> '' AND g.peak_end <> ''
+						AND EXTRACT(ISODOW FROM ul.created_at AT TIME ZONE $3) < 6
+						AND to_char(ul.created_at AT TIME ZONE $3, 'HH24:MI') >= lpad(g.peak_start, 5, '0')
+						AND to_char(ul.created_at AT TIME ZONE $3, 'HH24:MI') < lpad(g.peak_end, 5, '0')
+					THEN true ELSE false END AS in_peak
+			FROM usage_logs ul
+			LEFT JOIN groups g ON g.id = NULLIF(ul.group_id, 0)
+			WHERE ul.created_at >= $1 AND ul.created_at < $2`
+	args := []any{startTime, endTime, timezone.Name()}
+	query, args = appendPeakWeightedDimFilters(query, args, dim)
+
+	query += `
+		)
+		SELECT
+			s.user_id,
+			s.model,
+			s.in_peak,
+			COALESCE(SUM(s.cache_read_tokens), 0) AS cache_read_tokens,
+			COALESCE(SUM(s.input_tokens), 0) AS input_tokens,
+			COALESCE(SUM(s.output_tokens), 0) AS output_tokens
+		FROM scoped s
+		GROUP BY s.user_id, s.model, s.in_peak
+		ORDER BY s.user_id, SUM(s.input_tokens + s.cache_read_tokens + s.output_tokens) DESC`
+
+	rows, err := r.sql.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil && err == nil {
+			err = closeErr
+			results = nil
+		}
+	}()
+
+	results = make([]usagestats.PeakWeightedModelDetail, 0)
+	for rows.Next() {
+		var row usagestats.PeakWeightedModelDetail
+		if err := rows.Scan(
+			&row.UserID,
+			&row.Model,
+			&row.InPeak,
+			&row.CacheReadTokens,
+			&row.InputTokens,
+			&row.OutputTokens,
+		); err != nil {
+			return nil, err
+		}
+		results = append(results, row)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return results, nil
+}
+
+// appendPeakWeightedDimFilters 追加用户分解维度筛选条件，供高峰加权统计相关查询共用。
+func appendPeakWeightedDimFilters(query string, args []any, dim usagestats.UserBreakdownDimension) (string, []any) {
+	if dim.GroupID > 0 {
+		query += fmt.Sprintf(" AND ul.group_id = $%d", len(args)+1)
+		args = append(args, dim.GroupID)
+	}
+	if dim.Model != "" {
+		query += fmt.Sprintf(" AND %s = $%d", resolveModelDimensionExpression(dim.ModelType), len(args)+1)
+		args = append(args, dim.Model)
+	}
+	if dim.UserID > 0 {
+		query += fmt.Sprintf(" AND ul.user_id = $%d", len(args)+1)
+		args = append(args, dim.UserID)
+	}
+	if dim.APIKeyID > 0 {
+		query += fmt.Sprintf(" AND ul.api_key_id = $%d", len(args)+1)
+		args = append(args, dim.APIKeyID)
+	}
+	if dim.AccountID > 0 {
+		query += fmt.Sprintf(" AND ul.account_id = $%d", len(args)+1)
+		args = append(args, dim.AccountID)
+	}
+	if dim.RequestType != nil {
+		condition, conditionArgs := buildRequestTypeFilterConditionWithAlias(len(args)+1, *dim.RequestType, "ul")
+		query += " AND " + condition
+		args = append(args, conditionArgs...)
+	}
+	if dim.Stream != nil {
+		query += fmt.Sprintf(" AND ul.stream = $%d", len(args)+1)
+		args = append(args, *dim.Stream)
+	}
+	if dim.BillingType != nil {
+		query += fmt.Sprintf(" AND ul.billing_type = $%d", len(args)+1)
+		args = append(args, *dim.BillingType)
+	}
+	return query, args
 }
 
 // GetAllGroupUsageSummary 返回所有分组在服务端配置时区内的今日、昨日与当前保留记录累计金额。

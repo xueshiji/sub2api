@@ -565,46 +565,16 @@ export default {
         }
       },
       peakStats: {
-        subtitle: 'token 按订阅分组配置的高峰时段倍率加权，用于评估峰值资源占用',
+        subtitle: '积分按订阅分组配置的高峰时段倍率放大，上游折扣模型按乘数折减',
         userCount: '共 {count} 位用户',
         exportHtml: '导出 HTML',
+        openReport: '在新标签页打开报告',
+        openingReport: '正在生成报告…',
+        openReportHint: '积分报告（KPI / 图表 / 明细表）将在新的浏览器标签页中打开，报告为浅色自包含页面',
+        popupBlocked: '浏览器拦截了弹出窗口，请允许本站弹出窗口后重试',
+        failedToOpen: '打开报告失败',
         empty: '当前筛选条件下暂无用量数据',
-        failedToLoad: '加载加权统计失败',
-        kpis: {
-          totalUsers: '总用户数',
-          totalUsersHint: '活跃调用账户',
-          userUnit: '人',
-          weightedTokens: '高峰期加权 Token',
-          weightedHint: '原始 {original} · 加权系数 {ratio}×',
-          totalRequests: '总请求次数',
-          requestUnit: '次',
-          requestsHint: '人均 {avg} 次',
-          heavyUsers: '重度用户',
-          heavyHint: '加权 Token ≥ {threshold}M'
-        },
-        charts: {
-          top15Title: 'Top 15 用户 · 加权 Token 用量',
-          top15Subtitle: '高峰期加权 Tokens（百万）横向对比',
-          compareTitle: '加权 vs 原始 Token 对比',
-          compareSubtitle: 'Top 10 用户两类指标对比',
-          pieTitle: 'Token 占比分布',
-          pieSubtitle: '各用户加权 Token 占总量的比例',
-          others: '其他'
-        },
-        table: {
-          user: '用户',
-          weighted: '高峰期加权 Tokens (M)',
-          original: '原始 Tokens (M)',
-          cacheRead: '缓存输入 (M)',
-          inputTokens: '输入(缓存未命中) (M)',
-          outputTokens: '输出 (M)',
-          requests: '请求次数',
-          ctxLen: '单次平均 Token',
-          share: '用量占比',
-          searchPlaceholder: '搜索用户名 / 邮箱...',
-          all: '全部',
-          heavy: '重度用户 (≥{threshold}M)'
-        }
+        failedToLoad: '加载积分统计失败'
       },
       cleanup: {
         button: '清理',

@@ -52,6 +52,7 @@ type UsageLogRepository interface {
 	GetGroupStatsWithFilters(ctx context.Context, startTime, endTime time.Time, userID, apiKeyID, accountID, groupID int64, requestType *int16, stream *bool, billingType *int8) ([]usagestats.GroupStat, error)
 	GetUserBreakdownStats(ctx context.Context, startTime, endTime time.Time, dim usagestats.UserBreakdownDimension, limit int) ([]usagestats.UserBreakdownItem, error)
 	GetPeakWeightedTokenStats(ctx context.Context, startTime, endTime time.Time, dim usagestats.UserBreakdownDimension) ([]usagestats.PeakWeightedTokenItem, error)
+	GetPeakWeightedModelBreakdown(ctx context.Context, startTime, endTime time.Time, dim usagestats.UserBreakdownDimension) ([]usagestats.PeakWeightedModelDetail, error)
 	GetAllGroupUsageSummary(ctx context.Context, todayStart time.Time) ([]usagestats.GroupUsageSummary, error)
 	GetAPIKeyUsageTrend(ctx context.Context, startTime, endTime time.Time, granularity string, limit int) ([]usagestats.APIKeyUsageTrendPoint, error)
 	GetUserUsageTrend(ctx context.Context, startTime, endTime time.Time, granularity string, limit int) ([]usagestats.UserUsageTrendPoint, error)

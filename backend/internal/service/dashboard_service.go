@@ -424,6 +424,14 @@ func (s *DashboardService) GetPeakWeightedTokenStats(ctx context.Context, startT
 	return stats, nil
 }
 
+func (s *DashboardService) GetPeakWeightedModelBreakdown(ctx context.Context, startTime, endTime time.Time, dim usagestats.UserBreakdownDimension) ([]usagestats.PeakWeightedModelDetail, error) {
+	details, err := s.usageRepo.GetPeakWeightedModelBreakdown(ctx, startTime, endTime, dim)
+	if err != nil {
+		return nil, fmt.Errorf("get peak weighted model breakdown: %w", err)
+	}
+	return details, nil
+}
+
 func (s *DashboardService) GetBatchUserUsageStats(ctx context.Context, userIDs []int64, startTime, endTime time.Time) (map[int64]*usagestats.BatchUserUsageStats, error) {
 	stats, err := s.usageRepo.GetBatchUserUsageStats(ctx, userIDs, startTime, endTime)
 	if err != nil {

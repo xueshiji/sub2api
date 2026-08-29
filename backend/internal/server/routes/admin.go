@@ -23,6 +23,10 @@ func RegisterAdminRoutes(
 	// 插件 UI 使用短时能力 URL，仅提供经过安装校验的静态资源。
 	v1.GET("/plugin-ui/:token/*path", h.Admin.Plugin.ServeUIAsset)
 
+	// 积分报告视图同样使用短时一次性能力 URL：新标签页顶级导航无法携带
+	// Authorization 头，凭 POST 换取的随机 id 访问。
+	v1.GET("/admin/dashboard/peak-report-views/:id", h.Admin.Dashboard.GetPeakReportView)
+
 	admin := v1.Group("/admin")
 	admin.Use(gin.HandlerFunc(adminAuth))
 	// 面板全局按用户限流（默认管理员豁免，可在系统设置中关闭豁免）
@@ -294,6 +298,7 @@ func registerDashboardRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		dashboard.POST("/api-keys-usage", h.Admin.Dashboard.GetBatchAPIKeysUsage)
 		dashboard.GET("/user-breakdown", h.Admin.Dashboard.GetUserBreakdown)
 		dashboard.GET("/peak-weighted-tokens", h.Admin.Dashboard.GetPeakWeightedTokenStats)
+		dashboard.POST("/peak-report-views", h.Admin.Dashboard.CreatePeakReportView)
 		dashboard.POST("/aggregation/backfill", h.Admin.Dashboard.BackfillAggregation)
 	}
 }

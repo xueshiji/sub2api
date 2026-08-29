@@ -20,6 +20,7 @@ type DashboardHandler struct {
 	dashboardService   *service.DashboardService
 	aggregationService *service.DashboardAggregationService
 	startTime          time.Time // Server start time for uptime calculation
+	peakReportViews    peakReportViewStore
 }
 
 // NewDashboardHandler creates a new admin dashboard handler
@@ -629,12 +630,18 @@ func (h *DashboardHandler) GetPeakWeightedTokenStats(c *gin.Context) {
 		response.Error(c, 500, "Failed to get peak weighted token stats")
 		return
 	}
+	details, err := h.dashboardService.GetPeakWeightedModelBreakdown(c.Request.Context(), startTime, endTime, dim)
+	if err != nil {
+		response.Error(c, 500, "Failed to get peak weighted model breakdown")
+		return
+	}
 
 	response.Success(c, gin.H{
-		"users":      stats,
-		"start_date": c.Query("start_date"),
-		"end_date":   c.Query("end_date"),
-		"timezone":   timezone.Name(),
+		"users":         stats,
+		"model_details": details,
+		"start_date":    c.Query("start_date"),
+		"end_date":      c.Query("end_date"),
+		"timezone":      timezone.Name(),
 	})
 }
 
