@@ -7,7 +7,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # 可用环境变量覆盖默认的远端 daemon 与上传目标
 # DOCKER_HOST 必须 export 才会传给 docker 子进程
-export DOCKER_HOST="${DOCKER_HOST:-ssh://192.168.137.2}"
+export DOCKER_HOST="${DOCKER_HOST:-ssh://archlinux}"
 TARGET="${TARGET:-root@10.18.12.63}"
 
 # buildx 默认选用当前 docker context 关联的 builder（如本机 OrbStack/Docker Desktop），
