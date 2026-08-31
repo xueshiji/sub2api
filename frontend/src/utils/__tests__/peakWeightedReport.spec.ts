@@ -104,21 +104,21 @@ describe('buildPeakWeightedReportHtml', () => {
     // chip 文案按积分阈值生成
     expect(document.getElementById('chipHeavy')!.textContent).toBe('重度用户 (≥25% 周额度)')
 
-    // KPI：总积分 233025（折合 1.50 个周额度）；高峰积分 41462 / 非高峰 191563
+    // KPI：总积分 233025（折合 1.50 个周额度）；非高峰 = 非折扣 169843.6 + 折扣 11330×1/3 + 李四 29272.3 = 202892.57，高峰 = 233025.03 − 202892.57
     const kpiHtml = document.getElementById('kpiGrid')!.innerHTML
     expect(kpiHtml).toContain('周额度消耗总计')
     expect(kpiHtml).toContain('233,025')
     expect(kpiHtml).toContain('1.50')
-    expect(kpiHtml).toContain('41,462')
-    expect(kpiHtml).toContain('191,563')
+    expect(kpiHtml).toContain('30,132')
+    expect(kpiHtml).toContain('202,893')
     // 领奖台按折后积分排名：zhangsan 183,668 积分居首，占比 78.8%
     const podium = document.getElementById('podium')!.innerHTML
     expect(podium).toContain('183,668')
     expect(podium).toContain('78.8%')
-    // 洞察卡含高峰积分占比口径：41462.47 / 233025.03 = 17.8%
+    // 洞察卡含高峰积分占比口径：30132.47 / 233025.03 = 12.9%
     const insight = document.getElementById('insightGrid')!.innerHTML
     expect(insight).toContain('高峰积分占比')
-    expect(insight).toContain('17.8%')
+    expect(insight).toContain('12.9%')
   })
 
   it('用户标签中的 HTML 字符被转义', () => {

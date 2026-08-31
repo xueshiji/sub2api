@@ -379,7 +379,7 @@ var rawData = REPORT.rows.map(function (r) {
   var offOut = (r.output_tokens - r.peak_output) - r.disc_offpeak_output;
   var offFull = (offIn * PRICE.input + offCache * PRICE.cacheRead + offOut * PRICE.output) / 1e6;
   var offDiscBase = (r.disc_offpeak_input * PRICE.input + r.disc_offpeak_cache_read * PRICE.cacheRead + r.disc_offpeak_output * PRICE.output) / 1e6;
-  var offpeakCredits = offFull - offDiscBase * (1 - DISCOUNT);
+  var offpeakCredits = offFull + offDiscBase * DISCOUNT;
   return {
     user_label: r.label,
     original: r.original / 1e6,
