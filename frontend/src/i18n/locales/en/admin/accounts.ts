@@ -202,6 +202,7 @@ export default {
         todayStats: 'Today Stats',
         groups: 'Groups',
         usageWindows: 'Usage Windows',
+        perfStats: 'Last 30m Perf',
         proxy: 'Proxy',
         lastUsed: 'Last Used',
         createdAt: 'Created',
@@ -215,6 +216,7 @@ export default {
         hint: 'Displayed as "group / base score / sticky bonus". The base score is computed within the current filtered candidate set and includes priority, load, queue depth, error rate, first-token latency, reset window, quota headroom, billing rate, and related factors. The sticky bonus applies only when sticky weighting is enabled for previous_response_id or session_hash. Higher scores are preferred.'
       },
       usageWindowsHint: '"5h / 7d" are the upstream account\'s official rolling usage windows (e.g. OpenAI ChatGPT, Claude). They are imposed by the upstream provider on the account itself — not configured by sub2api, and unrelated to the models you map. Usage resets automatically once each window rolls over, and the limit cannot be lifted from within sub2api.',
+      perfStatsHint: 'Average performance of the account over the last 30 minutes (aggregated across models): TTFT is the first-token latency of streaming requests; decode speed is the weighted throughput of output tokens (for streaming requests, computed over duration excluding first-token latency). When prefer_best_performance is enabled, the scheduler compares accounts per request-mapped upstream model among candidates with equal priority and load, preferring better performers.',
       ollamaCloud: {
         title: 'Ollama Cloud usage',
         sessionSecurityHint: 'The browser session is encrypted at rest and sent only to the fixed official settings URL.',
@@ -1455,6 +1457,8 @@ export default {
         cost: 'Cost',
         requests: 'Requests',
         tokens: 'Tokens',
+        decodeSpeed: 'Decode',
+        samples: 'Samples',
         highestCostDay: 'Highest Cost Day',
         highestRequestDay: 'Highest Request Day',
         date: 'Date',

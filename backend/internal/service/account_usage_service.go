@@ -80,6 +80,10 @@ type UsageLogRepository interface {
 	GetAccountStatsAggregated(ctx context.Context, accountID int64, startTime, endTime time.Time) (*usagestats.UsageStats, error)
 	GetModelStatsAggregated(ctx context.Context, modelName string, startTime, endTime time.Time) (*usagestats.UsageStats, error)
 	GetDailyStatsAggregated(ctx context.Context, userID int64, startTime, endTime time.Time) ([]map[string]any, error)
+
+	// 聚合 since 之后每 (账号, 映射后的上游模型) 的性能窗口指标（有效样本数、平均 TTFT、
+	// decode 分子分母），见 usage_log_repo_account_perf.go
+	GetAccountPerformanceWindowStats(ctx context.Context, since time.Time) ([]AccountPerfWindowRow, error)
 }
 
 type accountWindowStatsBatchReader interface {

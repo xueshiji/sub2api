@@ -106,6 +106,13 @@ func ProvideBatchImageCleanupService(repo BatchImageRepository, accountRepo Acco
 	return svc
 }
 
+// ProvideAccountPerformanceStatsService creates and starts AccountPerformanceStatsService.
+func ProvideAccountPerformanceStatsService(usageLogRepo UsageLogRepository) *AccountPerformanceStatsService {
+	svc := NewAccountPerformanceStatsService(usageLogRepo)
+	svc.Start()
+	return svc
+}
+
 // ProvideOpenAIOAuthService creates OpenAIOAuthService with privacy/account enrichment support.
 func ProvideOpenAIOAuthService(
 	proxyRepo ProxyRepository,
@@ -840,6 +847,7 @@ var ProviderSet = wire.NewSet(
 	NewAnnouncementService,
 	NewAdminService,
 	NewGatewayService,
+	ProvideAccountPerformanceStatsService,
 	NewOpenAIGatewayService,
 	ProvideImageStorageSettingService,
 	ProvideImageTaskService,

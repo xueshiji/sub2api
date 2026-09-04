@@ -11,6 +11,7 @@ import type {
   PaginatedResponse,
   AccountUsageInfo,
   WindowStats,
+  AccountPerfStats,
   ClaudeModel,
   AccountUsageStatsResponse,
   TempUnschedulableStatus,
@@ -516,6 +517,22 @@ export async function getBatchTodayStats(accountIds: number[]): Promise<BatchTod
   return data
 }
 
+export interface BatchAccountPerfStatsResponse {
+  stats: Record<string, AccountPerfStats>
+}
+
+/**
+ * 批量获取多个账号近 30 分钟性能指标（平均 TTFT、decode 吞吐）
+ * @param accountIds - 账号 ID 列表
+ * @returns 以账号 ID（字符串）为键的性能指标映射
+ */
+export async function getBatchAccountPerfStats(accountIds: number[]): Promise<BatchAccountPerfStatsResponse> {
+  const { data } = await apiClient.post<BatchAccountPerfStatsResponse>('/admin/accounts/perf-stats/batch', {
+    account_ids: accountIds
+  })
+  return data
+}
+
 /**
  * Set account schedulable status
  * @param id - Account ID
@@ -1004,6 +1021,7 @@ export const accountsAPI = {
   getBatchUsage,
   getTodayStats,
   getBatchTodayStats,
+  getBatchAccountPerfStats,
   clearRateLimit,
   recoverState,
   resetAccountQuota,

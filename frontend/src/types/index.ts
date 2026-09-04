@@ -1268,6 +1268,13 @@ export interface WindowStats {
   user_cost?: number
 }
 
+export interface AccountPerfStats {
+  avg_ttft_ms: number | null
+  avg_decode_tps: number | null
+  sample_count: number
+  updated_at: string
+}
+
 export interface UsageProgress {
   utilization: number // Percentage (0-100+, 100 = 100%)
   resets_at: string | null

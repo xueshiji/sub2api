@@ -303,6 +303,19 @@
               :error="todayStatsError"
             />
           </template>
+          <template #header-perf_stats="{ column }">
+            <div class="flex items-center">
+              <span>{{ column.label }}</span>
+              <HelpTooltip :content="t('admin.accounts.perfStatsHint')" width-class="w-72" />
+            </div>
+          </template>
+          <template #cell-perf_stats="{ row }">
+            <AccountPerfStatsCell
+              :stats="perfStatsByAccountId[String(row.id)] ?? null"
+              :loading="perfStatsLoading"
+              :error="perfStatsError"
+            />
+          </template>
           <template #cell-groups="{ row }">
             <AccountGroupsCell :groups="row.groups" :max-display="4" />
           </template>
@@ -517,6 +530,7 @@ import type { SelectOption } from '@/components/common/Select.vue'
 import AccountStatusIndicator from '@/components/account/AccountStatusIndicator.vue'
 import AccountUsageCell from '@/components/account/AccountUsageCell.vue'
 import AccountTodayStatsCell from '@/components/account/AccountTodayStatsCell.vue'
+import AccountPerfStatsCell from '@/components/account/AccountPerfStatsCell.vue'
 import AccountGroupsCell from '@/components/account/AccountGroupsCell.vue'
 import AccountCapacityCell from '@/components/account/AccountCapacityCell.vue'
 import UpstreamBillingRateCell from '@/components/account/UpstreamBillingRateCell.vue'
@@ -532,7 +546,7 @@ import { extractApiErrorMessage } from '@/utils/apiError'
 import { sanitizeUrl } from '@/utils/url'
 import { getFloatingPanelPosition } from '@/utils/floatingPanel'
 import { formatMultiplier } from '@/utils/formatters'
-import type { Account, AccountPlatform, AccountSchedulerGroupScore, AccountType, AccountUsageInfo, Proxy as AccountProxy, AdminGroup, WindowStats, ClaudeModel, UpstreamBillingProbeSnapshot } from '@/types'
+import type { Account, AccountPerfStats, AccountPlatform, AccountSchedulerGroupScore, AccountType, AccountUsageInfo, Proxy as AccountProxy, AdminGroup, WindowStats, ClaudeModel, UpstreamBillingProbeSnapshot } from '@/types'
 
 const { t } = useI18n()
 const appStore = useAppStore()
@@ -634,11 +648,12 @@ const accountToolsDropdownStyle = computed(() => ({
   width: `${accountToolsDropdownPosition.width}px`
 }))
 const hiddenColumns = reactive<Set<string>>(new Set())
-const DEFAULT_HIDDEN_COLUMNS = ['today_stats', 'proxy', 'notes', 'scheduler_score', 'rate_multiplier']
+const DEFAULT_HIDDEN_COLUMNS = ['today_stats', 'perf_stats', 'proxy', 'notes', 'scheduler_score', 'rate_multiplier']
 const HIDDEN_COLUMNS_KEY = 'account-hidden-columns'
 // One-time migration: hide scheduler score for existing admins too, because showing it opt-ins to heavy backend scoring.
+// Later also hides perf_stats by default for existing admins.
 const HIDDEN_COLUMNS_VERSION_KEY = 'account-hidden-columns-version'
-const HIDDEN_COLUMNS_CURRENT_VERSION = 'scheduler-score-hidden-by-default'
+const HIDDEN_COLUMNS_CURRENT_VERSION = 'perf-stats-hidden-by-default'
 
 // Sorting settings
 const ACCOUNT_SORT_STORAGE_KEY = 'account-table-sort'
@@ -696,6 +711,11 @@ const todayStatsError = ref<string | null>(null)
 const todayStatsReqSeq = ref(0)
 const pendingTodayStatsRefresh = ref(false)
 const usageManualRefreshToken = ref(0)
+
+const perfStatsByAccountId = ref<Record<string, AccountPerfStats | null>>({})
+const perfStatsLoading = ref(false)
+const perfStatsError = ref<string | null>(null)
+const perfStatsReqSeq = ref(0)
 
 const desktopViewportQuery = '(min-width: 768px)'
 const isDesktopViewport = ref(
@@ -899,6 +919,46 @@ const refreshTodayStatsBatch = async () => {
   }
 }
 
+const refreshPerfStatsBatch = async () => {
+  if (hiddenColumns.has('perf_stats')) {
+    perfStatsLoading.value = false
+    perfStatsError.value = null
+    return
+  }
+
+  const accountIDs = accounts.value.map(account => account.id)
+  const reqSeq = ++perfStatsReqSeq.value
+  if (accountIDs.length === 0) {
+    perfStatsByAccountId.value = {}
+    perfStatsError.value = null
+    perfStatsLoading.value = false
+    return
+  }
+
+  perfStatsLoading.value = true
+  perfStatsError.value = null
+
+  try {
+    const result = await adminAPI.accounts.getBatchAccountPerfStats(accountIDs)
+    if (reqSeq !== perfStatsReqSeq.value) return
+    const serverStats = result.stats ?? {}
+    const nextStats: Record<string, AccountPerfStats | null> = {}
+    for (const accountID of accountIDs) {
+      const key = String(accountID)
+      nextStats[key] = serverStats[key] ?? null
+    }
+    perfStatsByAccountId.value = nextStats
+  } catch (error) {
+    if (reqSeq !== perfStatsReqSeq.value) return
+    perfStatsError.value = 'Failed'
+    console.error('Failed to load account perf stats:', error)
+  } finally {
+    if (reqSeq === perfStatsReqSeq.value) {
+      perfStatsLoading.value = false
+    }
+  }
+}
+
 const autoRefreshIntervalLabel = (sec: number) => {
   if (sec === 5) return t('admin.accounts.refreshInterval5s')
   if (sec === 10) return t('admin.accounts.refreshInterval10s')
@@ -948,6 +1008,7 @@ const loadSavedColumns = () => {
       // Older saved column layouts may have scheduler_score visible; migrate them to the new safe default once.
       if (localStorage.getItem(HIDDEN_COLUMNS_VERSION_KEY) !== HIDDEN_COLUMNS_CURRENT_VERSION) {
         hiddenColumns.add('scheduler_score')
+        hiddenColumns.add('perf_stats')
         localStorage.setItem(HIDDEN_COLUMNS_KEY, JSON.stringify([...hiddenColumns]))
         localStorage.setItem(HIDDEN_COLUMNS_VERSION_KEY, HIDDEN_COLUMNS_CURRENT_VERSION)
       }
@@ -1039,6 +1100,11 @@ const toggleColumn = (key: string) => {
   if ((key === 'today_stats' || key === 'usage') && wasHidden) {
     refreshTodayStatsBatch().catch((error) => {
       console.error('Failed to load account today stats after showing column:', error)
+    })
+  }
+  if (key === 'perf_stats' && wasHidden) {
+    refreshPerfStatsBatch().catch((error) => {
+      console.error('Failed to load account perf stats after showing column:', error)
     })
   }
   if (key === 'scheduler_score') {
@@ -1163,6 +1229,7 @@ const load = async () => {
     delete requestParams.lite
   }
   await refreshTodayStatsBatch()
+  void refreshPerfStatsBatch()
 }
 
 const reload = async () => {
@@ -1173,6 +1240,7 @@ const reload = async () => {
   pendingTodayStatsRefresh.value = false
   await baseReload()
   await refreshTodayStatsBatch()
+  void refreshPerfStatsBatch()
 }
 
 const refreshUpstreamBillingSortedList = async (force = false) => {
@@ -1235,6 +1303,9 @@ watch(loading, (isLoading, wasLoading) => {
     pendingTodayStatsRefresh.value = false
     refreshTodayStatsBatch().catch((error) => {
       console.error('Failed to refresh account today stats after table load:', error)
+    })
+    refreshPerfStatsBatch().catch((error) => {
+      console.error('Failed to refresh account perf stats after table load:', error)
     })
   }
 })
@@ -1378,6 +1449,7 @@ const refreshAccountsIncrementally = async () => {
     upstreamBillingNow.value = Date.now()
 
     await refreshTodayStatsBatch()
+    void refreshPerfStatsBatch()
   } catch (error) {
     console.error('Auto refresh failed:', error)
   } finally {
@@ -1702,6 +1774,7 @@ const allColumns = computed(() => {
     c.push({ key: 'groups', label: t('admin.accounts.columns.groups'), sortable: false })
   }
   c.push({ key: 'usage', label: t('admin.accounts.columns.usageWindows'), sortable: false })
+  c.push({ key: 'perf_stats', label: t('admin.accounts.columns.perfStats'), sortable: false })
   c.push(
     { key: 'proxy', label: t('admin.accounts.columns.proxy'), sortable: false },
     { key: 'priority', label: t('admin.accounts.columns.priority'), sortable: true },
