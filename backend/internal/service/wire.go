@@ -106,6 +106,26 @@ func ProvideBatchImageCleanupService(repo BatchImageRepository, accountRepo Acco
 	return svc
 }
 
+// ProvideAccountPerformanceStatsService creates and starts AccountPerformanceStatsService.
+func ProvideAccountPerformanceStatsService(usageLogRepo UsageLogRepository, cfg *config.Config) *AccountPerformanceStatsService {
+	slowCfg := SlowPenaltyConfig{}
+	if cfg != nil {
+		sc := cfg.Gateway.Scheduling
+		slowCfg = SlowPenaltyConfig{
+			Enabled:          sc.SlowPenaltyEnabled,
+			Consecutive:      sc.SlowPenaltyConsecutive,
+			ThresholdFactor:  sc.SlowPenaltyThresholdFactor,
+			MinThresholdMs:   sc.SlowPenaltyMinThresholdMs,
+			PoolMedianFactor: sc.SlowPenaltyPoolMedianFactor,
+			Factor:           sc.SlowPenaltyFactor,
+			Duration:         sc.SlowPenaltyDuration,
+		}
+	}
+	svc := NewAccountPerformanceStatsService(usageLogRepo, slowCfg)
+	svc.Start()
+	return svc
+}
+
 // ProvideOpenAIOAuthService creates OpenAIOAuthService with privacy/account enrichment support.
 func ProvideOpenAIOAuthService(
 	proxyRepo ProxyRepository,
@@ -840,6 +860,7 @@ var ProviderSet = wire.NewSet(
 	NewAnnouncementService,
 	NewAdminService,
 	NewGatewayService,
+	ProvideAccountPerformanceStatsService,
 	NewOpenAIGatewayService,
 	ProvideImageStorageSettingService,
 	ProvideImageTaskService,

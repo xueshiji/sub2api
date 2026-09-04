@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"math"
 	mathrand "math/rand"
 	"sort"
 	"strings"
@@ -708,7 +709,10 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 			}
 		}
 
-		// 分层过滤选择：优先级 →（可选）最早重置 → 负载率 → LRU
+		// 分层过滤选择：优先级 →（可选）最早重置 → 性能/负载 → LRU
+		perfLookup := func(acc *Account) *AccountPerformanceStats {
+			return s.accountPerfStats.Get(acc.ID, s.resolveAccountUpstreamModel(ctx, acc, requestedModel))
+		}
 		for len(available) > 0 {
 			// 1. 取优先级最小的集合
 			candidates := filterByMinPriority(available)
@@ -716,8 +720,24 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 			if cfg.PreferSoonestReset {
 				candidates = filterBySoonestReset(candidates)
 			}
-			// 3. 取负载率最低的集合
-			candidates = filterByMinLoadRate(candidates)
+			if cfg.PreferBestPerformance && s.accountPerfStats != nil && cfg.PerfLoadPenaltySlope > 0 {
+				// 3. 联合评分：性能分 × 负载折扣 × 慢惩罚，容差内保留交 LRU 打散。
+				// 替代「最低负载率并列集」硬过滤：高负载但性能好的账号可以胜过
+				// 低负载但性能差的账号，性能优选不再被负载分层的并列集截断。
+				candidates = filterByJointPerformance(candidates, cfg.PerfLoadPenaltySlope, perfLookup,
+					func(acc *Account) float64 {
+						return s.accountPerfStats.PenaltyFactor(acc.ID, s.resolveAccountUpstreamModel(ctx, acc, requestedModel))
+					})
+			} else {
+				// 3. 取负载率最低的集合
+				candidates = filterByMinLoadRate(candidates)
+				// 3.5 性能优选：同优先级、同负载率候选内按近 30 分钟 TTFT/decode 表现过滤，
+				// 只比较当前请求在该账号上映射后的上游模型维度的数据，避免模型组合差异
+				// 被误读为账号差异；无数据账号视为中性保留，由 LRU 继续兜底打散
+				if cfg.PreferBestPerformance && s.accountPerfStats != nil {
+					candidates = filterByBestPerformance(candidates, perfLookup)
+				}
+			}
 			// 4. LRU 选择最久未用的账号
 			selected := selectByLRU(candidates, preferOAuth)
 			if selected == nil {
@@ -803,6 +823,7 @@ func (s *GatewayService) schedulingConfig() config.GatewaySchedulingConfig {
 		FallbackMaxWaiting:       100,
 		LoadBatchEnabled:         true,
 		SlotCleanupInterval:      30 * time.Second,
+		PreferBestPerformance:    true,
 	}
 }
 
@@ -1577,6 +1598,187 @@ func filterBySoonestReset(accounts []accountWithLoad) []accountWithLoad {
 		end := acc.account.SessionWindowEnd
 		if end != nil && now.Before(*end) && end.Equal(*minEnd) {
 			result = append(result, acc)
+		}
+	}
+	return result
+}
+
+// resolveAccountUpstreamModel 返回 requestedModel 在该账号上实际转发使用的模型名，
+// 与各转发路径写入 usage_logs.upstream_model 的口径一致（账号级映射 → 平台 ID 归一
+// → 原名透传）。解析不出（请求模型为空、账号不支持该模型）时返回空串，性能优选
+// 按无数据处理；Antigravity 动态 fallback 等运行时才会确定的转发模型无法在此还原，
+// 同样落回中性，不会误惩罚。
+func (s *GatewayService) resolveAccountUpstreamModel(ctx context.Context, account *Account, requestedModel string) string {
+	requestedModel = strings.TrimSpace(requestedModel)
+	if requestedModel == "" {
+		return ""
+	}
+
+	switch {
+	case account.Platform == PlatformAntigravity:
+		mapped := mapAntigravityModel(account, requestedModel)
+		if mapped == "" {
+			return ""
+		}
+		if enabled, ok := ThinkingEnabledFromContext(ctx); ok {
+			return applyThinkingModelSuffix(mapped, enabled)
+		}
+		return mapped
+	case account.IsBedrock():
+		mapped, ok := ResolveBedrockModelID(account, requestedModel)
+		if !ok {
+			return ""
+		}
+		return mapped
+	}
+
+	mapped := requestedModel
+	if account.Type == AccountTypeAPIKey || account.Type == AccountTypeServiceAccount {
+		if candidate, matched := account.ResolveMappedModel(requestedModel); matched {
+			mapped = candidate
+		}
+	}
+	if mapped == requestedModel {
+		switch {
+		case account.Platform == PlatformAnthropic && account.Type == AccountTypeServiceAccount:
+			mapped = normalizeVertexAnthropicModelID(claude.NormalizeModelID(requestedModel))
+		case account.Platform == PlatformAnthropic && account.Type != AccountTypeAPIKey:
+			mapped = claude.NormalizeModelID(requestedModel)
+		}
+	}
+	return mapped
+}
+
+// filterByBestPerformance 在同优先级、同负载率的候选内按近 30 分钟 TTFT/decode 表现优选。
+// lookup 由调用方绑定当前请求并按账号解析映射后的上游模型再查缓存：候选账号在其他
+// 模型上的表现与其能否服务好当前请求无关，混入会把模型组合差异误读为账号性能差异。
+// 各维度按相对候选内最优账号的比值计分（TTFT：最优/自身，越低越好；decode tps：
+// 自身/最优，越高越好）后加权求和，保留与最优分差距在容差内的候选交由 LRU 打散：
+// 相对比值的分差不随候选构成变化，候选间微差不会被放大成满分差距，也不因出现
+// 更差的候选而稀释。无数据（窗口内样本不足）的账号视为中性无条件保留，保证空闲
+// 账号仍会被 LRU 选中；被挤出的差账号在窗口数据滑出后自动回到中性被复探。
+// 单项指标缺失时该维度按满分计：缺失不构成该维度差的证据，不应挤占其余维度的容差。
+func filterByBestPerformance(accounts []accountWithLoad, lookup func(account *Account) *AccountPerformanceStats) []accountWithLoad {
+	if len(accounts) <= 1 {
+		return accounts
+	}
+
+	statsByIndex := make([]*AccountPerformanceStats, len(accounts))
+	ttftBest := math.Inf(1)
+	tpsBest := 0.0
+	hasDataCount := 0
+	for i := range accounts {
+		stats := lookup(accounts[i].account)
+		if stats == nil || stats.SampleCount < accountPerfMinSamples {
+			continue
+		}
+		statsByIndex[i] = stats
+		hasDataCount++
+		if stats.AvgTTFTMs != nil {
+			if v := *stats.AvgTTFTMs; v < ttftBest {
+				ttftBest = v
+			}
+		}
+		if stats.AvgDecodeTps != nil {
+			if v := *stats.AvgDecodeTps; v > tpsBest {
+				tpsBest = v
+			}
+		}
+	}
+	if hasDataCount == 0 {
+		return accounts
+	}
+
+	scores := make([]float64, len(accounts))
+	bestScore := 0.0
+	for i, stats := range statsByIndex {
+		if stats == nil {
+			continue
+		}
+		scores[i] = accountPerfScore(stats.AvgTTFTMs, stats.AvgDecodeTps, ttftBest, tpsBest)
+		if scores[i] > bestScore {
+			bestScore = scores[i]
+		}
+	}
+
+	result := make([]accountWithLoad, 0, len(accounts))
+	for i := range accounts {
+		if statsByIndex[i] == nil || bestScore-scores[i] <= accountPerfScoreTolerance {
+			result = append(result, accounts[i])
+		}
+	}
+	return result
+}
+
+// filterByJointPerformance 在同优先级候选内按「性能分 × 负载折扣 × 慢惩罚」联合
+// 评分过滤：保留与锚点容差内的候选，交由 LRU 打散。锚点由有数据账号的最优联合
+// 分定义，无数据账号的满分只用于自身的容差判断（优先复探），不抬高锚点挤掉
+// 中游数据账号；层内全无数据时锚点退化为负载折扣。负载折扣 slope>0 使满载账号
+// 综合分按比例衰减，允许高负载的快账号胜过低负载的慢账号——软化「最低负载率
+// 并列集」硬过滤，性能优选不再被负载分层截断。
+// penalty 返回该账号当前维度的慢惩罚乘子（1.0 为无惩罚）。
+func filterByJointPerformance(accounts []accountWithLoad, slope float64, lookup func(*Account) *AccountPerformanceStats, penalty func(*Account) float64) []accountWithLoad {
+	if len(accounts) <= 1 || slope <= 0 {
+		return accounts
+	}
+
+	statsByIndex := make([]*AccountPerformanceStats, len(accounts))
+	ttftBest := math.Inf(1)
+	tpsBest := 0.0
+	for i := range accounts {
+		stats := lookup(accounts[i].account)
+		if stats == nil || stats.SampleCount < accountPerfMinSamples {
+			continue
+		}
+		statsByIndex[i] = stats
+		if stats.AvgTTFTMs != nil {
+			if v := *stats.AvgTTFTMs; v < ttftBest {
+				ttftBest = v
+			}
+		}
+		if stats.AvgDecodeTps != nil {
+			if v := *stats.AvgDecodeTps; v > tpsBest {
+				tpsBest = v
+			}
+		}
+	}
+
+	scores := make([]float64, len(accounts))
+	// 锚点只由有数据账号定义：无数据账号的 perf=1.0 是「未知」而非「最优」，
+	// 参与锚定会把中游数据账号挤出容差带；无数据账号仍以满分参与容差判断，
+	// 保持被优先复探。层内全无数据时锚点退化为负载折扣，保持负载倾斜。
+	anchor := 0.0
+	hasData := false
+	for i := range accounts {
+		perf := 1.0
+		if stats := statsByIndex[i]; stats != nil {
+			perf = accountPerfScore(stats.AvgTTFTMs, stats.AvgDecodeTps, ttftBest, tpsBest)
+		}
+		loadRate := 0.0
+		if accounts[i].loadInfo != nil && accounts[i].loadInfo.LoadRate > 0 {
+			loadRate = float64(accounts[i].loadInfo.LoadRate)
+		}
+		scores[i] = perf * penalty(accounts[i].account) * (1 - slope*loadRate/100)
+		if statsByIndex[i] == nil {
+			continue
+		}
+		hasData = true
+		if scores[i] > anchor {
+			anchor = scores[i]
+		}
+	}
+	if !hasData {
+		for _, score := range scores {
+			if score > anchor {
+				anchor = score
+			}
+		}
+	}
+
+	result := make([]accountWithLoad, 0, len(accounts))
+	for i := range accounts {
+		if anchor-scores[i] <= accountPerfScoreTolerance {
+			result = append(result, accounts[i])
 		}
 	}
 	return result
