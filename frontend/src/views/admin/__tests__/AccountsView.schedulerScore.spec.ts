@@ -228,11 +228,12 @@ describe('admin AccountsView scheduler score column', () => {
       include_scheduler_score: '0'
     }))
     expect(JSON.parse(localStorage.getItem('account-hidden-columns') || '[]')).toContain('scheduler_score')
+    expect(JSON.parse(localStorage.getItem('account-hidden-columns') || '[]')).toContain('perf_stats')
   })
 
   it('requests scheduler scores when the migrated column settings explicitly show the column', async () => {
     localStorage.setItem('account-hidden-columns', JSON.stringify(['today_stats']))
-    localStorage.setItem('account-hidden-columns-version', 'scheduler-score-hidden-by-default')
+    localStorage.setItem('account-hidden-columns-version', 'perf-stats-hidden-by-default')
 
     mountView()
     await flushPromises()

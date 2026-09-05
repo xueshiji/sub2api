@@ -1462,11 +1462,28 @@ type GatewaySchedulingConfig struct {
 	// 默认 false，保持原有「优先级 → 负载率 → LRU」行为不变。
 	PreferSoonestReset bool `mapstructure:"prefer_soonest_reset"`
 
-	// PreferBestPerformance 开启后，负载感知选择在同优先级、同负载率的候选内
-	// 按近 30 分钟平均 TTFT/decode 吞吐优选（差账号靠后被选中），比较限定在
+	// PreferBestPerformance 开启后，负载感知选择在同优先级候选内按
+	// 「性能分 × 负载折扣 × 慢惩罚」联合评分优选（差账号靠后被选中），比较限定在
 	// 当前请求映射后的上游模型维度的数据上。
 	// 窗口内无数据的账号视为中性，不影响其被 LRU 选中。默认 true。
 	PreferBestPerformance bool `mapstructure:"prefer_best_performance"`
+
+	// PerfLoadPenaltySlope 联合评分的负载折扣斜率：综合分 = 性能分 ×
+	// (1 - slope × LoadRate/100)。替代「最低负载率并列集」硬过滤，使高负载但
+	// 性能好的账号仍可胜过低负载但性能差的账号。0 表示关闭联合评分、
+	// 回落旧的「最低负载率 → 性能优选」两级行为。
+	PerfLoadPenaltySlope float64 `mapstructure:"perf_load_penalty_slope"`
+
+	// 慢请求快速降权：30 分钟统计窗口对账号突发劣化存在滞后，此机制按
+	// (账号, 上游模型) 追踪最近请求 TTFT，连续 N 条超过阈值即对性能分乘
+	// 惩罚系数，持续一段时间后自动解除。进程内状态，多实例部署时各自独立生效。
+	SlowPenaltyEnabled         bool          `mapstructure:"slow_penalty_enabled"`
+	SlowPenaltyConsecutive     int           `mapstructure:"slow_penalty_consecutive"`      // 连续慢请求数触发阈值
+	SlowPenaltyThresholdFactor float64       `mapstructure:"slow_penalty_threshold_factor"` // 阈值 = 模型池内请求级 P95 × factor
+	SlowPenaltyMinThresholdMs  int           `mapstructure:"slow_penalty_min_threshold_ms"` // 阈值绝对下限，避免低基线模型误判
+	SlowPenaltySelfFactor      float64       `mapstructure:"slow_penalty_self_factor"`      // 额外要求超过账号自身窗口均值 × 此值，消除请求画像偏差
+	SlowPenaltyFactor          float64       `mapstructure:"slow_penalty_factor"`           // 惩罚期性能分乘子
+	SlowPenaltyDuration        time.Duration `mapstructure:"slow_penalty_duration"`         // 惩罚持续时间
 
 	// 负载计算
 	LoadBatchEnabled    bool `mapstructure:"load_batch_enabled"`
@@ -2493,6 +2510,24 @@ func setDefaults() {
 	viper.SetDefault("gateway.scheduling.fallback_selection_mode", "last_used")
 	viper.SetDefault("gateway.scheduling.prefer_soonest_reset", false)
 	viper.SetDefault("gateway.scheduling.prefer_best_performance", true)
+	// 默认值来自 2026-09-04 生产库 3 天分析（groups 2/3/4，17 账号池，9.3 万行）：
+	// 在途并发 1/2/3 时 TTFT 劣化 1.13~1.18 倍、decode 仅掉 ~4%，并发 ≥4 出现
+	// 15~20 倍 TTFT 悬崖；对负载-相对性能四点 (0,1)/(0.33,0.89)/(0.67,0.89)/(1,0.25)
+	// 线性拟合得 slope≈0.55，取 0.5 平衡两端误差（候选经 LoadRate<100 硬过滤后
+	// 实际只见 0/33/67 三档，0.5 时折扣 1/0.83/0.67）。
+	viper.SetDefault("gateway.scheduling.perf_load_penalty_slope", 0.5)
+	// 慢惩罚：slow=TTFT>池内该模型请求级 P95（P(slow|上一条slow)≈45% vs 2.9%，
+	// 自相关 15 倍）；N=2 时健康账号误触发 0.034 次/账号·小时（目标<0.05）；
+	// min=2000ms≈池 P90，防 P95 样本不足时阈值塌进正常区间；factor 0.3 对应
+	// 劣化账号期望相对性能 0.25~0.5 的中偏强值；D=10min 覆盖连击后再触发间隔
+	// （P90 604s），慢性慢账号会持续重触发、恢复后 10 分钟自动回归。
+	viper.SetDefault("gateway.scheduling.slow_penalty_enabled", true)
+	viper.SetDefault("gateway.scheduling.slow_penalty_consecutive", 2)
+	viper.SetDefault("gateway.scheduling.slow_penalty_threshold_factor", 1.0)
+	viper.SetDefault("gateway.scheduling.slow_penalty_min_threshold_ms", 2000)
+	viper.SetDefault("gateway.scheduling.slow_penalty_self_factor", 1.5)
+	viper.SetDefault("gateway.scheduling.slow_penalty_factor", 0.3)
+	viper.SetDefault("gateway.scheduling.slow_penalty_duration", "10m0s")
 	viper.SetDefault("gateway.scheduling.load_batch_enabled", true)
 	viper.SetDefault("gateway.scheduling.load_batch_cache_ttl_ms", 200)
 	viper.SetDefault("gateway.scheduling.snapshot_mget_chunk_size", 128)
@@ -3665,6 +3700,27 @@ func (c *Config) Validate() error {
 	}
 	if c.Gateway.Scheduling.FullRebuildIntervalSeconds < 0 {
 		return fmt.Errorf("gateway.scheduling.full_rebuild_interval_seconds must be non-negative")
+	}
+	if c.Gateway.Scheduling.PerfLoadPenaltySlope < 0 || c.Gateway.Scheduling.PerfLoadPenaltySlope > 1 {
+		return fmt.Errorf("gateway.scheduling.perf_load_penalty_slope must be within [0, 1]")
+	}
+	if c.Gateway.Scheduling.SlowPenaltyConsecutive < 1 {
+		return fmt.Errorf("gateway.scheduling.slow_penalty_consecutive must be positive")
+	}
+	if c.Gateway.Scheduling.SlowPenaltyThresholdFactor <= 0 {
+		return fmt.Errorf("gateway.scheduling.slow_penalty_threshold_factor must be positive")
+	}
+	if c.Gateway.Scheduling.SlowPenaltyMinThresholdMs < 0 {
+		return fmt.Errorf("gateway.scheduling.slow_penalty_min_threshold_ms must be non-negative")
+	}
+	if c.Gateway.Scheduling.SlowPenaltySelfFactor < 0 {
+		return fmt.Errorf("gateway.scheduling.slow_penalty_self_factor must be non-negative")
+	}
+	if c.Gateway.Scheduling.SlowPenaltyFactor <= 0 || c.Gateway.Scheduling.SlowPenaltyFactor > 1 {
+		return fmt.Errorf("gateway.scheduling.slow_penalty_factor must be within (0, 1]")
+	}
+	if c.Gateway.Scheduling.SlowPenaltyDuration <= 0 {
+		return fmt.Errorf("gateway.scheduling.slow_penalty_duration must be positive")
 	}
 	if c.Gateway.Scheduling.OutboxLagWarnSeconds > 0 &&
 		c.Gateway.Scheduling.OutboxLagRebuildSeconds > 0 &&

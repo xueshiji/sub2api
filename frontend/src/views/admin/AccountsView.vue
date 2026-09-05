@@ -670,10 +670,14 @@ const ACCOUNT_SORTABLE_KEYS = new Set([
   'priority',
   'rate_multiplier',
   'upstream_billing_rate',
+  'perf_stats',
   'last_used_at',
   'created_at',
   'expires_at'
 ])
+
+// 后端性能得分排序字段为 perf_score，与列 key perf_stats 不同，发请求前统一映射。
+const toAccountSortParamKey = (key: string) => (key === 'perf_stats' ? 'perf_score' : key)
 const loadInitialAccountSortState = (): AccountSortState => {
   const fallback: AccountSortState = { sort_by: 'name', sort_order: 'asc' }
   try {
@@ -1144,7 +1148,7 @@ const {
     group: '',
     search: '',
     include_scheduler_score: shouldIncludeSchedulerScore() ? '1' : '0',
-    sort_by: sortState.sort_by,
+    sort_by: toAccountSortParamKey(sortState.sort_by),
     sort_order: sortState.sort_order
   }
 })
@@ -1256,6 +1260,22 @@ const refreshUpstreamBillingSortedList = async (force = false) => {
   }
 }
 
+// 性能得分每 60 秒在服务端后台刷新一次：按此列排序时每分钟完整重载一次，
+// 否则增量刷新只做行级替换，排序会逐渐陈旧。
+let lastPerfStatsSortRefreshMinute = -1
+const refreshPerfScoreSortedList = async () => {
+  if (sortState.sort_by !== 'perf_stats') return
+
+  const minute = Math.floor(Date.now() / 60_000)
+  if (lastPerfStatsSortRefreshMinute === minute) return
+  lastPerfStatsSortRefreshMinute = minute
+  try {
+    await reload()
+  } catch (error) {
+    console.error('Failed to refresh perf score sort:', error)
+  }
+}
+
 const debouncedReload = () => {
   clearSelection()
   syncAccountListDerivedParams()
@@ -1285,7 +1305,7 @@ const handleSort = (key: string, order: AccountSortOrder) => {
   sortState.sort_by = key
   sortState.sort_order = order
   const requestParams = params as any
-  requestParams.sort_by = key
+  requestParams.sort_by = toAccountSortParamKey(key)
   requestParams.sort_order = order
   syncAccountListDerivedParams()
   pagination.page = 1
@@ -1327,9 +1347,15 @@ watch(accounts, (rows) => {
 })
 
 watch(upstreamBillingNow, () => {
-  if (sortState.sort_by !== 'upstream_billing_rate' || loading.value) return
+  if (loading.value) return
   if (typeof document !== 'undefined' && document.hidden) return
-  void refreshUpstreamBillingSortedList()
+  if (sortState.sort_by === 'upstream_billing_rate') {
+    void refreshUpstreamBillingSortedList()
+    return
+  }
+  if (sortState.sort_by === 'perf_stats') {
+    void refreshPerfScoreSortedList()
+  }
 })
 
 const isAnyModalOpen = computed(() => {
@@ -1774,7 +1800,7 @@ const allColumns = computed(() => {
     c.push({ key: 'groups', label: t('admin.accounts.columns.groups'), sortable: false })
   }
   c.push({ key: 'usage', label: t('admin.accounts.columns.usageWindows'), sortable: false })
-  c.push({ key: 'perf_stats', label: t('admin.accounts.columns.perfStats'), sortable: false })
+  c.push({ key: 'perf_stats', label: t('admin.accounts.columns.perfStats'), sortable: true })
   c.push(
     { key: 'proxy', label: t('admin.accounts.columns.proxy'), sortable: false },
     { key: 'priority', label: t('admin.accounts.columns.priority'), sortable: true },

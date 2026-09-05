@@ -60,8 +60,9 @@ func TestUsageLog_GetAccountPerformanceWindowStats(t *testing.T) {
 	// 账号 B（窗口内，upstream-model-a）：
 	insert(accountB.ID, now, "upstream-model-a", true, intPtr(4000), intPtr(400), 80) // decode 3600ms, tokens 80
 
-	rows, err := repo.GetAccountPerformanceWindowStats(ctx, now.Add(-30*time.Minute))
+	window, err := repo.GetAccountPerformanceWindowStats(ctx, now.Add(-30*time.Minute))
 	require.NoError(t, err)
+	rows := window.Rows
 
 	byKey := make(map[string]service.AccountPerfWindowRow, len(rows))
 	for _, row := range rows {
@@ -99,4 +100,10 @@ func TestUsageLog_GetAccountPerformanceWindowStats(t *testing.T) {
 	require.Equal(t, int64(1), rowFallback.SampleCount)
 	require.Equal(t, int64(60), rowFallback.SumOutputTokens)
 	require.InDelta(t, float64(2500), rowFallback.SumDecodeMs, 0.01)
+
+	// 池内每模型请求级 TTFT P95（线性插值）：model-a 窗口内样本 [400, 800, 2000]，
+	// 位置 (3-1)*0.95=1.9 → 800 + 0.9*(2000-800) = 1880；单样本模型 P95 即该值。
+	require.InDelta(t, float64(1880), window.PoolTTFTP95Ms["upstream-model-a"], 0.01)
+	require.InDelta(t, float64(1000), window.PoolTTFTP95Ms["upstream-model-b"], 0.01)
+	require.InDelta(t, float64(500), window.PoolTTFTP95Ms["claude-test"], 0.01)
 }

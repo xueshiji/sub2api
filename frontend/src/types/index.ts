@@ -1272,6 +1272,12 @@ export interface AccountPerfStats {
   avg_ttft_ms: number | null
   avg_decode_tps: number | null
   sample_count: number
+  /** 相对窗口内全站最优账号的加权性能分（0~1），样本不足时不返回 */
+  score?: number | null
+  /** 账号任一模型维度当前处于慢惩罚降权期 */
+  slow_penalty?: boolean
+  /** 慢惩罚最晚自动解除时间 */
+  slow_penalty_until?: string | null
   updated_at: string
 }
 

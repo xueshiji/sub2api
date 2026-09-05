@@ -127,7 +127,7 @@ export default {
         hint: '显示格式为“分组名 / 基础分 / 粘性加分”。基础分按当前筛选条件限定的候选账号计算，包含优先级、负载、排队、错误率、首包延迟、重置窗口、额度余量、计费倍率等因子；粘性加分只在开启粘性加权时用于 previous_response_id 或 session_hash。分数越大越优先。'
       },
       usageWindowsHint: '“5h / 7d”是上游账号（如 OpenAI ChatGPT、Claude）官方的滚动用量窗口限制，由上游对账号设定，并非 sub2api 配置，也与你映射的模型无关。窗口滚动到期后用量会自动重置，无法在 sub2api 端解除该限制。',
-      perfStatsHint: '账号最近 30 分钟的平均表现（跨模型聚合）：TTFT 为流式请求首字延迟；decode 速度为输出 token 的加权吞吐（流式请求按时长扣除首字延迟计算）。开启 prefer_best_performance 时，调度器会在同优先级、同负载率的候选中，按当前请求映射后的上游模型维度优先选择表现更好的账号。',
+      perfStatsHint: '账号最近 30 分钟的平均表现（跨模型聚合）：TTFT 为流式请求首字延迟；decode 速度为输出 token 的加权吞吐（流式请求按时长扣除首字延迟计算）。得分为相对窗口内全站最优账号的加权相对性能（TTFT 与 decode 各占一半），样本不足 3 的账号不计分，可按得分在服务端排序。开启 prefer_best_performance 时，调度器在同优先级候选内按当前请求映射后的上游模型维度，以「性能分 × 负载折扣 × 慢惩罚」联合评分优选（perf_load_penalty_slope > 0 时；否则仅在同负载率候选内按性能优选）。「慢惩罚」标记表示该账号连续出现慢请求，调度评分临时乘惩罚系数，到期自动解除。',
       ollamaCloud: {
         title: 'Ollama Cloud 用量',
         sessionSecurityHint: '浏览器会话会加密落库，且只发送到固定的 Ollama 官方设置页。',
@@ -1517,6 +1517,10 @@ export default {
         tokens: 'Token',
         decodeSpeed: 'Decode',
         samples: '样本',
+        perfScore: '得分',
+        slowPenalty: '慢惩罚',
+        slowPenaltyTip: '连续慢请求触发调度降权，到期自动解除',
+        slowPenaltyTipUntil: '连续慢请求触发调度降权，{time} 自动解除',
         highestCostDay: '最高费用日',
         highestRequestDay: '最高请求日',
         date: '日期',

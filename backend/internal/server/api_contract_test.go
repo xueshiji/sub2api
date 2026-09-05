@@ -2848,7 +2848,7 @@ func (r *stubUsageLogRepo) GetAllGroupUsageSummary(ctx context.Context, todaySta
 	return nil, errors.New("not implemented")
 }
 
-func (r *stubUsageLogRepo) GetAccountPerformanceWindowStats(ctx context.Context, since time.Time) ([]service.AccountPerfWindowRow, error) {
+func (r *stubUsageLogRepo) GetAccountPerformanceWindowStats(ctx context.Context, since time.Time) (*service.AccountPerfWindowStats, error) {
 	return nil, nil
 }
 

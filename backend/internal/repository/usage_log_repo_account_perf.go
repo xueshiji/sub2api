@@ -17,7 +17,7 @@ import (
 // 可参与评分的样本量。同一请求模型在不同账号可映射到不同上游模型，按 upstream_model
 // 分组才能让调度比较落在同质的工作负载上；upstream_model 缺失的历史行回落
 // requested_model，两者皆空的行归入空桶，仅参与账号级聚合展示。
-func (r *usageLogRepository) GetAccountPerformanceWindowStats(ctx context.Context, since time.Time) ([]service.AccountPerfWindowRow, error) {
+func (r *usageLogRepository) GetAccountPerformanceWindowStats(ctx context.Context, since time.Time) (*service.AccountPerfWindowStats, error) {
 	query := `
 WITH samples AS (
 	SELECT
@@ -53,7 +53,10 @@ GROUP BY account_id, model`
 	}
 	defer func() { _ = rows.Close() }()
 
-	result := make([]service.AccountPerfWindowRow, 0, 16)
+	result := &service.AccountPerfWindowStats{
+		Rows:          make([]service.AccountPerfWindowRow, 0, 16),
+		PoolTTFTP95Ms: make(map[string]float64),
+	}
 	for rows.Next() {
 		var row service.AccountPerfWindowRow
 		var avgTTFT sql.NullFloat64
@@ -72,9 +75,37 @@ GROUP BY account_id, model`
 			v := avgTTFT.Float64
 			row.AvgTTFTMs = &v
 		}
-		result = append(result, row)
+		result.Rows = append(result.Rows, row)
 	}
 	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	// 池内每模型请求级 TTFT P95：慢惩罚的判定基线。模型维度与账号聚合口径一致
+	//（upstream 优先，requested 兜底），P95 只计 first_token_ms 非空行。
+	// usage_logs 自身有 model 列，GROUP BY model 会绑定到表列而非下面的 COALESCE
+	// 别名，必须按位置分组。
+	p95Query := `
+SELECT
+	COALESCE(NULLIF(upstream_model, ''), NULLIF(requested_model, ''), '') AS model,
+	percentile_cont(0.95) WITHIN GROUP (ORDER BY first_token_ms)
+FROM usage_logs
+WHERE created_at >= $1 AND first_token_ms IS NOT NULL
+GROUP BY 1`
+	p95Rows, err := r.sql.QueryContext(ctx, p95Query, since)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = p95Rows.Close() }()
+	for p95Rows.Next() {
+		var model string
+		var p95 float64
+		if err := p95Rows.Scan(&model, &p95); err != nil {
+			return nil, err
+		}
+		result.PoolTTFTP95Ms[model] = p95
+	}
+	if err := p95Rows.Err(); err != nil {
 		return nil, err
 	}
 	return result, nil

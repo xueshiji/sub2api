@@ -917,6 +917,38 @@ func TestValidateLinuxDoFrontendRedirectURL(t *testing.T) {
 	}
 }
 
+func TestValidatePerfSchedulingParamsOutOfBoundsRejected(t *testing.T) {
+	resetViperWithJWTSecret(t)
+
+	base, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if err := base.Validate(); err != nil {
+		t.Fatalf("default config should pass validation, got: %v", err)
+	}
+
+	cases := []struct {
+		name string
+		set  func(*GatewaySchedulingConfig)
+	}{
+		{"负载折扣斜率超上限", func(sc *GatewaySchedulingConfig) { sc.PerfLoadPenaltySlope = 1.5 }},
+		{"负载折扣斜率为负", func(sc *GatewaySchedulingConfig) { sc.PerfLoadPenaltySlope = -0.1 }},
+		{"连击阈值为零", func(sc *GatewaySchedulingConfig) { sc.SlowPenaltyConsecutive = 0 }},
+		{"惩罚系数超上限", func(sc *GatewaySchedulingConfig) { sc.SlowPenaltyFactor = 1.2 }},
+		{"惩罚系数为零", func(sc *GatewaySchedulingConfig) { sc.SlowPenaltyFactor = 0 }},
+		{"阈值倍数为零", func(sc *GatewaySchedulingConfig) { sc.SlowPenaltyThresholdFactor = 0 }},
+		{"持续时间为零", func(sc *GatewaySchedulingConfig) { sc.SlowPenaltyDuration = 0 }},
+	}
+	for _, tc := range cases {
+		cfg := *base
+		tc.set(&cfg.Gateway.Scheduling)
+		if err := cfg.Validate(); err == nil {
+			t.Fatalf("%s: Validate() expected error, got nil", tc.name)
+		}
+	}
+}
+
 func TestValidateLinuxDoAllowsDisablingPKCEForCompatibility(t *testing.T) {
 	resetViperWithJWTSecret(t)
 

@@ -82,8 +82,8 @@ type UsageLogRepository interface {
 	GetDailyStatsAggregated(ctx context.Context, userID int64, startTime, endTime time.Time) ([]map[string]any, error)
 
 	// 聚合 since 之后每 (账号, 映射后的上游模型) 的性能窗口指标（有效样本数、平均 TTFT、
-	// decode 分子分母），见 usage_log_repo_account_perf.go
-	GetAccountPerformanceWindowStats(ctx context.Context, since time.Time) ([]AccountPerfWindowRow, error)
+	// decode 分子分母）及池内每模型请求级 TTFT P95，见 usage_log_repo_account_perf.go
+	GetAccountPerformanceWindowStats(ctx context.Context, since time.Time) (*AccountPerfWindowStats, error)
 }
 
 type accountWindowStatsBatchReader interface {

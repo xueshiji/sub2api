@@ -538,7 +538,16 @@ func (h *AccountHandler) List(c *gin.Context) {
 		}
 	}
 
-	accounts, total, err := h.adminService.ListAccounts(c.Request.Context(), page, pageSize, platform, accountType, status, search, groupID, privacyMode, sortBy, sortOrder)
+	var (
+		accounts []service.Account
+		total    int64
+		err      error
+	)
+	if sortBy == accountPerfScoreSortKey {
+		accounts, total, err = h.listAccountsSortedByPerfScore(c.Request.Context(), platform, accountType, status, search, groupID, privacyMode, sortOrder, page, pageSize)
+	} else {
+		accounts, total, err = h.adminService.ListAccounts(c.Request.Context(), page, pageSize, platform, accountType, status, search, groupID, privacyMode, sortBy, sortOrder)
+	}
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

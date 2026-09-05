@@ -107,8 +107,21 @@ func ProvideBatchImageCleanupService(repo BatchImageRepository, accountRepo Acco
 }
 
 // ProvideAccountPerformanceStatsService creates and starts AccountPerformanceStatsService.
-func ProvideAccountPerformanceStatsService(usageLogRepo UsageLogRepository) *AccountPerformanceStatsService {
-	svc := NewAccountPerformanceStatsService(usageLogRepo)
+func ProvideAccountPerformanceStatsService(usageLogRepo UsageLogRepository, cfg *config.Config) *AccountPerformanceStatsService {
+	slowCfg := SlowPenaltyConfig{}
+	if cfg != nil {
+		sc := cfg.Gateway.Scheduling
+		slowCfg = SlowPenaltyConfig{
+			Enabled:         sc.SlowPenaltyEnabled,
+			Consecutive:     sc.SlowPenaltyConsecutive,
+			ThresholdFactor: sc.SlowPenaltyThresholdFactor,
+			MinThresholdMs:  sc.SlowPenaltyMinThresholdMs,
+			SelfFactor:      sc.SlowPenaltySelfFactor,
+			Factor:          sc.SlowPenaltyFactor,
+			Duration:        sc.SlowPenaltyDuration,
+		}
+	}
+	svc := NewAccountPerformanceStatsService(usageLogRepo, slowCfg)
 	svc.Start()
 	return svc
 }

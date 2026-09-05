@@ -1,7 +1,9 @@
 package admin
 
 import (
+	"context"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -33,6 +35,60 @@ func buildAccountPerfStatsBatchCacheKey(accountIDs []int64) string {
 // BatchPerfStatsRequest 批量账号近 30 分钟性能统计请求体。
 type BatchPerfStatsRequest struct {
 	AccountIDs []int64 `json:"account_ids" binding:"required"`
+}
+
+// accountPerfScoreSortKey 性能得分排序字段：得分来自内存缓存而非 DB，排序在内存完成。
+const accountPerfScoreSortKey = "perf_score"
+
+// listAccountsSortedByPerfScore 按性能得分排序的账号列表：全量取出过滤后账号，
+// 按缓存中的账号级得分排序（无分账号排最后，不随方向变化）后内存分页。
+func (h *AccountHandler) listAccountsSortedByPerfScore(ctx context.Context, platform, accountType, status, search string, groupID int64, privacyMode, sortOrder string, page, pageSize int) ([]service.Account, int64, error) {
+	accounts, err := h.adminService.ListAccountsForSchedulerScoreFilter(ctx, platform, accountType, status, search, groupID, privacyMode)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	var snapshot map[int64]*service.AccountPerformanceStats
+	if h.accountPerfStats != nil {
+		snapshot = h.accountPerfStats.Snapshot()
+	}
+	desc := strings.EqualFold(strings.TrimSpace(sortOrder), "desc")
+	scoreOf := func(id int64) (*float64, bool) {
+		st, ok := snapshot[id]
+		if !ok || st.Score == nil {
+			return nil, false
+		}
+		return st.Score, true
+	}
+	sort.SliceStable(accounts, func(i, j int) bool {
+		si, iOK := scoreOf(accounts[i].ID)
+		sj, jOK := scoreOf(accounts[j].ID)
+		switch {
+		case !iOK && !jOK:
+			return accounts[i].ID < accounts[j].ID
+		case !iOK:
+			return false
+		case !jOK:
+			return true
+		}
+		if *si != *sj {
+			if desc {
+				return *si > *sj
+			}
+			return *si < *sj
+		}
+		return accounts[i].ID < accounts[j].ID
+	})
+
+	start := (page - 1) * pageSize
+	if start >= len(accounts) || start < 0 {
+		return []service.Account{}, int64(len(accounts)), nil
+	}
+	end := start + pageSize
+	if end > len(accounts) {
+		end = len(accounts)
+	}
+	return accounts[start:end], int64(len(accounts)), nil
 }
 
 // GetBatchAccountPerfStats 批量获取账号近 30 分钟性能指标（平均 TTFT、decode 吞吐）。
