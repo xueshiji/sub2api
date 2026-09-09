@@ -112,13 +112,13 @@ func ProvideAccountPerformanceStatsService(usageLogRepo UsageLogRepository, cfg 
 	if cfg != nil {
 		sc := cfg.Gateway.Scheduling
 		slowCfg = SlowPenaltyConfig{
-			Enabled:         sc.SlowPenaltyEnabled,
-			Consecutive:     sc.SlowPenaltyConsecutive,
-			ThresholdFactor: sc.SlowPenaltyThresholdFactor,
-			MinThresholdMs:  sc.SlowPenaltyMinThresholdMs,
-			SelfFactor:      sc.SlowPenaltySelfFactor,
-			Factor:          sc.SlowPenaltyFactor,
-			Duration:        sc.SlowPenaltyDuration,
+			Enabled:          sc.SlowPenaltyEnabled,
+			Consecutive:      sc.SlowPenaltyConsecutive,
+			ThresholdFactor:  sc.SlowPenaltyThresholdFactor,
+			MinThresholdMs:   sc.SlowPenaltyMinThresholdMs,
+			PoolMedianFactor: sc.SlowPenaltyPoolMedianFactor,
+			Factor:           sc.SlowPenaltyFactor,
+			Duration:         sc.SlowPenaltyDuration,
 		}
 	}
 	svc := NewAccountPerformanceStatsService(usageLogRepo, slowCfg)

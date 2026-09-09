@@ -54,9 +54,10 @@ type AccountPerfWindowRow struct {
 }
 
 // AccountPerfWindowStats 是一次窗口聚合的完整结果：各 (账号, 模型) 行 +
-// 池内每模型请求级 TTFT P95（慢惩罚判定基线）。
+// 池内每模型请求级 TTFT P95（慢惩罚阈值基线）与 P50（慢惩罚画像保护下限）。
 type AccountPerfWindowStats struct {
 	Rows          []AccountPerfWindowRow
+	PoolTTFTP50Ms map[string]float64
 	PoolTTFTP95Ms map[string]float64
 }
 
@@ -85,14 +86,14 @@ type accountPerfStatsRepo interface {
 // 滞后（差数据要稀释旧好数据后才反映），本机制在请求完成时实时判定：
 // 连续 N 条 TTFT 超过阈值即对该账号性能分乘 Factor，持续 Duration 后自动解除。
 type SlowPenaltyConfig struct {
-	Enabled         bool
-	Consecutive     int
-	ThresholdFactor float64 // 阈值 = 模型池内请求级 P95 × Factor
-	MinThresholdMs  int     // 阈值绝对下限
-	SelfFactor      float64 // 额外要求超过账号自身窗口均值 × 此值（消除请求画像偏差）
-	Factor          float64 // 惩罚期性能分乘子
-	Duration        time.Duration
-	now             func() time.Time // 测试注入
+	Enabled          bool
+	Consecutive      int
+	ThresholdFactor  float64 // 阈值 = 模型池内请求级 P95 × Factor
+	MinThresholdMs   int     // 阈值绝对下限
+	PoolMedianFactor float64 // 画像保护下限 = 模型池内请求级 P50 × 此值，TTFT 未超过它时不计慢
+	Factor           float64 // 惩罚期性能分乘子
+	Duration         time.Duration
+	now              func() time.Time // 测试注入
 }
 
 // AccountPerformanceStatsService 维护各账号近 30 分钟性能指标的进程内缓存，
@@ -114,6 +115,7 @@ type AccountPerformanceStatsService struct {
 
 	// penMu 保护慢惩罚状态；与 mu 独立，避免调度热路径读惩罚时阻塞统计刷新。
 	penMu        sync.Mutex
+	poolP50      map[string]float64
 	poolP95      map[string]float64
 	slowStreak   map[accountSlowKey]int
 	penaltyUntil map[accountSlowKey]time.Time
@@ -133,7 +135,6 @@ func NewAccountPerformanceStatsService(repo accountPerfStatsRepo, slowCfg SlowPe
 		repo:         repo,
 		slowCfg:      slowCfg,
 		timeNow:      timeNow,
-		poolP95:      make(map[string]float64),
 		slowStreak:   make(map[accountSlowKey]int),
 		penaltyUntil: make(map[accountSlowKey]time.Time),
 	}
@@ -229,26 +230,21 @@ func (s *AccountPerformanceStatsService) ObserveTTFT(accountID int64, model stri
 	}
 
 	s.penMu.Lock()
+	p50 := s.poolP50[model]
 	p95 := s.poolP95[model]
 	s.penMu.Unlock()
 	if p95 <= 0 {
 		return
 	}
 
-	// 自身窗口均值条件：池基线对长上下文等画像天然偏高，叠加自身相对条件
-	// 才能把「账号劣化」与「请求天然慢」区分开；无自身数据时仅按池基线判定。
-	var selfAvg *float64
-	if stats := s.Get(accountID, model); stats != nil {
-		selfAvg = stats.AvgTTFTMs
-	}
-	threshold := p95 * s.slowCfg.ThresholdFactor
-	if min := float64(s.slowCfg.MinThresholdMs); threshold < min {
-		threshold = min
+	// 慢判定阈值 = max(池 P95 × ThresholdFactor, MinThresholdMs, 池中位 ×
+	// PoolMedianFactor)。最后一项为画像保护下限（PoolMedianFactor > 1 且池中位
+	// 有数据时生效）：长上下文等天然慢画像的请求未超下限不计慢。
+	threshold := max(p95*s.slowCfg.ThresholdFactor, float64(s.slowCfg.MinThresholdMs))
+	if s.slowCfg.PoolMedianFactor > 1 && p50 > 0 {
+		threshold = max(threshold, p50*s.slowCfg.PoolMedianFactor)
 	}
 	slow := float64(ttftMs) > threshold
-	if slow && selfAvg != nil && *selfAvg > 0 && s.slowCfg.SelfFactor > 1 {
-		slow = float64(ttftMs) > *selfAvg*s.slowCfg.SelfFactor
-	}
 
 	key := accountSlowKey{AccountID: accountID, Model: model}
 	now := s.timeNow()
@@ -390,6 +386,7 @@ func (s *AccountPerformanceStatsService) refreshOnce() {
 	s.mu.Unlock()
 
 	s.penMu.Lock()
+	s.poolP50 = window.PoolTTFTP50Ms
 	s.poolP95 = window.PoolTTFTP95Ms
 	s.penMu.Unlock()
 }

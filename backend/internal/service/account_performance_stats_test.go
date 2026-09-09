@@ -11,6 +11,7 @@ import (
 
 type perfStatsRepoStub struct {
 	rows    []AccountPerfWindowRow
+	poolP50 map[string]float64
 	poolP95 map[string]float64
 	err     error
 }
@@ -19,11 +20,7 @@ func (r *perfStatsRepoStub) GetAccountPerformanceWindowStats(ctx context.Context
 	if r.err != nil {
 		return nil, r.err
 	}
-	p95 := r.poolP95
-	if p95 == nil {
-		p95 = map[string]float64{}
-	}
-	return &AccountPerfWindowStats{Rows: r.rows, PoolTTFTP95Ms: p95}, nil
+	return &AccountPerfWindowStats{Rows: r.rows, PoolTTFTP50Ms: r.poolP50, PoolTTFTP95Ms: r.poolP95}, nil
 }
 
 func TestAccountPerformanceStatsServiceRefreshSwapsSnapshot(t *testing.T) {
@@ -242,24 +239,45 @@ func TestAccountSlowPenaltyExpiresAfterDuration(t *testing.T) {
 	}
 }
 
-func TestAccountSlowPenaltyRequiresSelfAverageWhenConfigured(t *testing.T) {
-	// 账号自身窗口均值 1000ms：ttft 1500 超池基线 1000，但不足自身 2 倍，
-	// SelfFactor=2 时不算慢——长上下文画像的账号不应被池基线误伤。
+func TestAccountSlowPenaltyWithinPoolMedianBoundNotSlow(t *testing.T) {
+	// 池中位 600、P95 1000：ttft 1100 超池阈值 1000，但未超池中位 2 倍（1200），
+	// 长上下文等天然慢画像的请求不计慢。
 	repo := &perfStatsRepoStub{
-		rows: []AccountPerfWindowRow{
-			{AccountID: 1, Model: "upstream-a", SampleCount: 5, AvgTTFTMs: perfFloatPtr(1000), TtftCount: 5},
-		},
+		poolP50: map[string]float64{"upstream-a": 600},
 		poolP95: map[string]float64{"upstream-a": 1000},
 	}
 	cfg := slowPenaltyBaseCfg()
-	cfg.SelfFactor = 2.0
+	cfg.PoolMedianFactor = 2.0
 	svc, _ := slowPenaltyTestService(t, repo, cfg)
 
 	for i := 0; i < 5; i++ {
-		svc.ObserveTTFT(1, "upstream-a", 1500)
+		svc.ObserveTTFT(1, "upstream-a", 1100)
 	}
 	if got := svc.PenaltyFactor(1, "upstream-a"); got != 1.0 {
-		t.Fatalf("requests within self-average bound should not trigger penalty, got %v", got)
+		t.Fatalf("requests within pool-median bound should not trigger penalty, got %v", got)
+	}
+}
+
+func TestAccountSlowPenaltyDegradedAccountBeyondPoolMedianBoundTriggers(t *testing.T) {
+	// 账号自身窗口均值已劣化到 1500ms，请求 2000ms 超池阈值 1000 与池中位 2 倍
+	// （1200），应触发惩罚；取值在自身均值 1.5 倍（2250）以内，锁定「自身均值
+	// 不参与判定」的行为。
+	repo := &perfStatsRepoStub{
+		rows: []AccountPerfWindowRow{
+			{AccountID: 1, Model: "upstream-a", SampleCount: 5, AvgTTFTMs: perfFloatPtr(1500), TtftCount: 5},
+		},
+		poolP50: map[string]float64{"upstream-a": 600},
+		poolP95: map[string]float64{"upstream-a": 1000},
+	}
+	cfg := slowPenaltyBaseCfg()
+	cfg.PoolMedianFactor = 2.0
+	svc, _ := slowPenaltyTestService(t, repo, cfg)
+
+	svc.ObserveTTFT(1, "upstream-a", 2000)
+	svc.ObserveTTFT(1, "upstream-a", 2000)
+	svc.ObserveTTFT(1, "upstream-a", 2000)
+	if got := svc.PenaltyFactor(1, "upstream-a"); got != 0.5 {
+		t.Fatalf("requests beyond pool-median bound should trigger penalty, got %v", got)
 	}
 }
 

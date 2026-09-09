@@ -1477,13 +1477,13 @@ type GatewaySchedulingConfig struct {
 	// 慢请求快速降权：30 分钟统计窗口对账号突发劣化存在滞后，此机制按
 	// (账号, 上游模型) 追踪最近请求 TTFT，连续 N 条超过阈值即对性能分乘
 	// 惩罚系数，持续一段时间后自动解除。进程内状态，多实例部署时各自独立生效。
-	SlowPenaltyEnabled         bool          `mapstructure:"slow_penalty_enabled"`
-	SlowPenaltyConsecutive     int           `mapstructure:"slow_penalty_consecutive"`      // 连续慢请求数触发阈值
-	SlowPenaltyThresholdFactor float64       `mapstructure:"slow_penalty_threshold_factor"` // 阈值 = 模型池内请求级 P95 × factor
-	SlowPenaltyMinThresholdMs  int           `mapstructure:"slow_penalty_min_threshold_ms"` // 阈值绝对下限，避免低基线模型误判
-	SlowPenaltySelfFactor      float64       `mapstructure:"slow_penalty_self_factor"`      // 额外要求超过账号自身窗口均值 × 此值，消除请求画像偏差
-	SlowPenaltyFactor          float64       `mapstructure:"slow_penalty_factor"`           // 惩罚期性能分乘子
-	SlowPenaltyDuration        time.Duration `mapstructure:"slow_penalty_duration"`         // 惩罚持续时间
+	SlowPenaltyEnabled          bool          `mapstructure:"slow_penalty_enabled"`
+	SlowPenaltyConsecutive      int           `mapstructure:"slow_penalty_consecutive"`        // 连续慢请求数触发阈值
+	SlowPenaltyThresholdFactor  float64       `mapstructure:"slow_penalty_threshold_factor"`   // 阈值 = 模型池内请求级 P95 × factor
+	SlowPenaltyMinThresholdMs   int           `mapstructure:"slow_penalty_min_threshold_ms"`   // 阈值绝对下限，避免低基线模型误判
+	SlowPenaltyPoolMedianFactor float64       `mapstructure:"slow_penalty_pool_median_factor"` // 画像保护下限 = 池内请求级 P50 × 此值，TTFT 未超过它时不计慢
+	SlowPenaltyFactor           float64       `mapstructure:"slow_penalty_factor"`             // 惩罚期性能分乘子
+	SlowPenaltyDuration         time.Duration `mapstructure:"slow_penalty_duration"`           // 惩罚持续时间
 
 	// 负载计算
 	LoadBatchEnabled    bool `mapstructure:"load_batch_enabled"`
@@ -2525,7 +2525,7 @@ func setDefaults() {
 	viper.SetDefault("gateway.scheduling.slow_penalty_consecutive", 2)
 	viper.SetDefault("gateway.scheduling.slow_penalty_threshold_factor", 1.0)
 	viper.SetDefault("gateway.scheduling.slow_penalty_min_threshold_ms", 2000)
-	viper.SetDefault("gateway.scheduling.slow_penalty_self_factor", 1.5)
+	viper.SetDefault("gateway.scheduling.slow_penalty_pool_median_factor", 2.0)
 	viper.SetDefault("gateway.scheduling.slow_penalty_factor", 0.3)
 	viper.SetDefault("gateway.scheduling.slow_penalty_duration", "10m0s")
 	viper.SetDefault("gateway.scheduling.load_batch_enabled", true)
@@ -3713,8 +3713,9 @@ func (c *Config) Validate() error {
 	if c.Gateway.Scheduling.SlowPenaltyMinThresholdMs < 0 {
 		return fmt.Errorf("gateway.scheduling.slow_penalty_min_threshold_ms must be non-negative")
 	}
-	if c.Gateway.Scheduling.SlowPenaltySelfFactor < 0 {
-		return fmt.Errorf("gateway.scheduling.slow_penalty_self_factor must be non-negative")
+	// 0 表示禁用画像保护下限，运行时仅 >1 生效，(0,1] 区间静默失效故直接拒绝
+	if pmf := c.Gateway.Scheduling.SlowPenaltyPoolMedianFactor; pmf < 0 || (pmf > 0 && pmf <= 1) {
+		return fmt.Errorf("gateway.scheduling.slow_penalty_pool_median_factor must be 0 (disabled) or greater than 1")
 	}
 	if c.Gateway.Scheduling.SlowPenaltyFactor <= 0 || c.Gateway.Scheduling.SlowPenaltyFactor > 1 {
 		return fmt.Errorf("gateway.scheduling.slow_penalty_factor must be within (0, 1]")

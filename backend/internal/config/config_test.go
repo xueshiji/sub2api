@@ -939,6 +939,8 @@ func TestValidatePerfSchedulingParamsOutOfBoundsRejected(t *testing.T) {
 		{"惩罚系数为零", func(sc *GatewaySchedulingConfig) { sc.SlowPenaltyFactor = 0 }},
 		{"阈值倍数为零", func(sc *GatewaySchedulingConfig) { sc.SlowPenaltyThresholdFactor = 0 }},
 		{"持续时间为零", func(sc *GatewaySchedulingConfig) { sc.SlowPenaltyDuration = 0 }},
+		{"池中位倍数为负", func(sc *GatewaySchedulingConfig) { sc.SlowPenaltyPoolMedianFactor = -0.1 }},
+		{"池中位倍数在无效区间", func(sc *GatewaySchedulingConfig) { sc.SlowPenaltyPoolMedianFactor = 1.0 }},
 	}
 	for _, tc := range cases {
 		cfg := *base
