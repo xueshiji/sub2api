@@ -16,6 +16,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/tidwall/gjson"
@@ -895,6 +896,11 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 			return []string{block}, dataLine, nil, nil
 		}
 
+		if firstTokenMs == nil && !apicompat.AnthropicSSEEventIsPing(eventName, dataLine) {
+			ms := int(time.Since(startTime).Milliseconds())
+			firstTokenMs = &ms
+		}
+
 		var event map[string]any
 		if err := json.Unmarshal([]byte(dataLine), &event); err != nil {
 			// JSON 解析失败，直接透传原始数据
@@ -1105,15 +1111,9 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 							resetKeepaliveTimer()
 						}
 					}
-					if data != "" {
-						if firstTokenMs == nil && data != "[DONE]" {
-							ms := int(time.Since(startTime).Milliseconds())
-							firstTokenMs = &ms
-						}
-						if usagePatch != nil {
-							mergeSSEUsagePatch(usage, usagePatch)
-						}
-					}
+				}
+				if data != "" && usagePatch != nil {
+					mergeSSEUsagePatch(usage, usagePatch)
 				}
 				continue
 			}

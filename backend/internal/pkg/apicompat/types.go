@@ -7,6 +7,8 @@ package apicompat
 import (
 	"bytes"
 	"encoding/json"
+
+	"github.com/tidwall/gjson"
 )
 
 // ---------------------------------------------------------------------------
@@ -197,6 +199,18 @@ type AnthropicStreamEvent struct {
 
 	// message_delta
 	Usage *AnthropicUsage `json:"usage,omitempty"`
+}
+
+// IsKeepalive 报告事件是否为不携带模型输出的保活事件（不作为首 token 计时点）。
+func (e *AnthropicStreamEvent) IsKeepalive() bool {
+	return e != nil && e.Type == "ping"
+}
+
+// AnthropicSSEEventIsPing 报告 SSE 事件是否为保活 ping：event: 行事件名或
+// data JSON 的 type 字段任一为 ping 即视为保活（兼容非 JSON、缺 type 的变体）。
+// ping 在流建立后即发出、早于 prefill 完成，不携带模型输出。
+func AnthropicSSEEventIsPing(eventName, data string) bool {
+	return eventName == "ping" || gjson.Get(data, "type").String() == "ping"
 }
 
 // AnthropicDelta carries incremental content in streaming events.

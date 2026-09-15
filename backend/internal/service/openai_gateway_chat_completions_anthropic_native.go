@@ -394,7 +394,7 @@ func (s *OpenAIGatewayService) handleCCStreamingFromNativeAnthropic(
 	}
 
 	processAnthropicEvent := func(event *apicompat.AnthropicStreamEvent) bool {
-		if firstChunk {
+		if firstChunk && !event.IsKeepalive() {
 			firstChunk = false
 			ms := int(time.Since(startTime).Milliseconds())
 			firstTokenMs = &ms
@@ -436,7 +436,12 @@ func (s *OpenAIGatewayService) handleCCStreamingFromNativeAnthropic(
 			logReadErr(rerr)
 			break
 		}
-		if _, ok := extractOpenAISSEEventLine(line); !ok {
+		eventName, ok := extractOpenAISSEEventLine(line)
+		if !ok {
+			continue
+		}
+		// ping 保活事件不产出内容，跳过以免消耗首 token 计时。
+		if eventName == "ping" {
 			continue
 		}
 

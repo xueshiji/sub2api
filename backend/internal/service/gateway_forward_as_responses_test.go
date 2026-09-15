@@ -229,6 +229,43 @@ func TestHandleResponsesStreamingResponse_PreservesMessageStartCacheUsage(t *tes
 	require.Contains(t, rec.Body.String(), `response.completed`)
 }
 
+func TestHandleResponsesStreamingResponse_PingNotCountedAsFirstToken(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	t.Parallel()
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+
+	pr, pw := io.Pipe()
+	resp := &http.Response{
+		Header: http.Header{"x-request-id": []string{"rid_responses_stream_ping"}},
+		Body:   pr,
+	}
+
+	go func() {
+		defer func() { _ = pw.Close() }()
+		_, _ = pw.Write([]byte("event: ping\ndata: {\"type\":\"ping\"}\n\n"))
+		// data 缺 type 的 ping 变体也不应消耗首 token 计时
+		_, _ = pw.Write([]byte("event: ping\ndata: {}\n\n"))
+		time.Sleep(200 * time.Millisecond)
+		_, _ = pw.Write([]byte("event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_p\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"claude-sonnet-4.5\",\"stop_reason\":\"\",\"usage\":{\"input_tokens\":9}}}\n\n"))
+		_, _ = pw.Write([]byte("event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"hi\"}}\n\n"))
+		_, _ = pw.Write([]byte("event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":6}}\n\n"))
+		_, _ = pw.Write([]byte("event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"))
+	}()
+
+	svc := &GatewayService{}
+	startTime := time.Now()
+	result, err := svc.handleResponsesStreamingResponse(resp, c, "claude-sonnet-4.5", "claude-sonnet-4.5", nil, startTime, apicompat.ResponsesClientToolMapping{})
+	_ = pr.Close()
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.NotNil(t, result.FirstTokenMs)
+	require.GreaterOrEqual(t, *result.FirstTokenMs, 150, "ping 到达后 200ms 才出现 message_start，首 token 应记 message_start 而非 ping")
+	require.Equal(t, 9, result.Usage.InputTokens)
+	require.Equal(t, 6, result.Usage.OutputTokens)
+}
+
 func TestParseAnthropicSSEField(t *testing.T) {
 	t.Parallel()
 

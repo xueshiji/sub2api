@@ -535,7 +535,7 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 
 	// processEvent handles a single parsed Anthropic SSE event.
 	processEvent := func(event *apicompat.AnthropicStreamEvent) bool {
-		if firstChunk {
+		if firstChunk && !event.IsKeepalive() {
 			firstChunk = false
 			ms := int(time.Since(startTime).Milliseconds())
 			firstTokenMs = &ms
@@ -606,6 +606,10 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 		line := scanner.Text()
 		eventType, ok := parseAnthropicSSEField(line, "event")
 		if !ok {
+			continue
+		}
+		// ping 保活事件不产出内容，跳过以免消耗首 token 计时。
+		if eventType == "ping" {
 			continue
 		}
 
