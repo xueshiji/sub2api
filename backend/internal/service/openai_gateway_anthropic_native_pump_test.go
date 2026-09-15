@@ -6,6 +6,7 @@ package service
 
 import (
 	"bufio"
+	"context"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -209,6 +210,121 @@ func TestCCStreamingFromNativeAnthropic_HappyPathStillConverts(t *testing.T) {
 	}
 	if !strings.Contains(body, "data: [DONE]") {
 		t.Fatalf("expected [DONE] terminator, got %q", body)
+	}
+}
+
+func TestCCStreamingFromNativeAnthropic_PingNotCountedAsFirstToken(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := newNativeAnthropicHangTestService(5)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
+
+	resp, pr, pw := newHangingUpstreamResponse()
+	go func() {
+		defer func() { _ = pw.Close() }()
+		_, _ = pw.Write([]byte("event: ping\ndata: {\"type\":\"ping\"}\n\n"))
+		// data 缺 type 的 ping 变体也不应消耗首 token 计时
+		_, _ = pw.Write([]byte("event: ping\ndata: {}\n\n"))
+		time.Sleep(200 * time.Millisecond)
+		_, _ = pw.Write([]byte("event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_p\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"glm-4.7\",\"usage\":{\"input_tokens\":9}}}\n\n"))
+		_, _ = pw.Write([]byte("event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":6}}\n\n"))
+		_, _ = pw.Write([]byte("event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"))
+	}()
+	defer func() { _ = pr.Close() }()
+
+	start := time.Now()
+	res, err := svc.handleCCStreamingFromNativeAnthropic(resp, c, "glm-4.7", "glm-4.7", "glm-4.7", nil, start, true)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if res == nil || res.FirstTokenMs == nil {
+		t.Fatalf("expected result with first token timing, got %+v", res)
+	}
+	if *res.FirstTokenMs < 150 {
+		t.Fatalf("first token should be measured at message_start (200ms after ping), got %dms", *res.FirstTokenMs)
+	}
+	if res.Usage.InputTokens != 9 || res.Usage.OutputTokens != 6 {
+		t.Fatalf("unexpected usage: %+v", res.Usage)
+	}
+}
+
+func TestResponsesStreamingFromNativeAnthropic_PingNotCountedAsFirstToken(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := newNativeAnthropicHangTestService(5)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
+
+	resp, pr, pw := newHangingUpstreamResponse()
+	go func() {
+		defer func() { _ = pw.Close() }()
+		_, _ = pw.Write([]byte("event: ping\ndata: {\"type\":\"ping\"}\n\n"))
+		// data 缺 type 的 ping 变体也不应消耗首 token 计时
+		_, _ = pw.Write([]byte("event: ping\ndata: {}\n\n"))
+		time.Sleep(200 * time.Millisecond)
+		_, _ = pw.Write([]byte("event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_p\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"glm-4.7\",\"usage\":{\"input_tokens\":9}}}\n\n"))
+		_, _ = pw.Write([]byte("event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":6}}\n\n"))
+		_, _ = pw.Write([]byte("event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"))
+	}()
+	defer func() { _ = pr.Close() }()
+
+	start := time.Now()
+	res, err := svc.handleResponsesStreamingFromNativeAnthropic(resp, c, "glm-4.7", "glm-4.7", "glm-4.7", nil, start, apicompat.ResponsesClientToolMapping{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if res == nil || res.FirstTokenMs == nil {
+		t.Fatalf("expected result with first token timing, got %+v", res)
+	}
+	if *res.FirstTokenMs < 150 {
+		t.Fatalf("first token should be measured at message_start (200ms after ping), got %dms", *res.FirstTokenMs)
+	}
+	if res.Usage.InputTokens != 9 || res.Usage.OutputTokens != 6 {
+		t.Fatalf("unexpected usage: %+v", res.Usage)
+	}
+}
+
+func TestNativeAnthropicStreamingResponse_PingNotCountedAsFirstToken(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := &OpenAIGatewayService{}
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+
+	resp, pr, pw := newHangingUpstreamResponse()
+	go func() {
+		defer func() { _ = pw.Close() }()
+		_, _ = pw.Write([]byte("event: ping\ndata: {\"type\":\"ping\"}\n\n"))
+		// data 缺 type 的 ping 变体也不应消耗首 token 计时
+		_, _ = pw.Write([]byte("event: ping\ndata: {}\n\n"))
+		time.Sleep(200 * time.Millisecond)
+		_, _ = pw.Write([]byte("data: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":8}}}\n\n"))
+		_, _ = pw.Write([]byte("data: {\"type\":\"message_delta\",\"usage\":{\"output_tokens\":2}}\n\n"))
+		_, _ = pw.Write([]byte("data: [DONE]\n\n"))
+	}()
+	defer func() { _ = pr.Close() }()
+
+	start := time.Now()
+	res, err := svc.handleNativeAnthropicStreamingResponse(context.Background(), resp, c, &Account{ID: 1}, "glm-4.7", "glm-4.7", "glm-4.7", nil, start)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if res == nil || res.FirstTokenMs == nil {
+		t.Fatalf("expected result with first token timing, got %+v", res)
+	}
+	if *res.FirstTokenMs < 150 {
+		t.Fatalf("first token should be measured at message_start (200ms after ping), got %dms", *res.FirstTokenMs)
+	}
+	if res.Usage.InputTokens != 8 || res.Usage.OutputTokens != 2 {
+		t.Fatalf("unexpected usage: %+v", res.Usage)
+	}
+	// ping 事件仍需透传给客户端
+	if !strings.Contains(rec.Body.String(), `"type":"ping"`) {
+		t.Fatalf("expected ping event to be relayed, got %q", rec.Body.String())
 	}
 }
 

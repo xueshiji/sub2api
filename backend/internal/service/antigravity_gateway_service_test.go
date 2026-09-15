@@ -1243,6 +1243,47 @@ func TestStreamUpstreamResponse_UsageAndFirstToken(t *testing.T) {
 	require.Contains(t, rec.Body.String(), "data:")
 }
 
+// TestStreamUpstreamResponse_PingNotCountedAsFirstToken
+// 验证：上游 ping 保活行不作为首 token 计时点
+func TestStreamUpstreamResponse_PingNotCountedAsFirstToken(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := newAntigravityTestService(&config.Config{
+		Gateway: config.GatewayConfig{MaxLineSize: defaultMaxLineSize},
+	})
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+
+	pr, pw := io.Pipe()
+	resp := &http.Response{StatusCode: http.StatusOK, Header: http.Header{}, Body: pr}
+
+	go func() {
+		defer func() { _ = pw.Close() }()
+		fmt.Fprintln(pw, "event: ping")
+		fmt.Fprintln(pw, `data: {"type":"ping"}`)
+		fmt.Fprintln(pw, "")
+		// data 缺 type 的 ping 变体也不应消耗首 token 计时
+		fmt.Fprintln(pw, "event: ping")
+		fmt.Fprintln(pw, "data: {}")
+		fmt.Fprintln(pw, "")
+		time.Sleep(200 * time.Millisecond)
+		fmt.Fprintln(pw, `data: {"type":"message_start","message":{"usage":{"input_tokens":4}}}`)
+		fmt.Fprintln(pw, "")
+	}()
+
+	start := time.Now()
+	result := svc.streamUpstreamResponse(c, resp, start)
+	_ = pr.Close()
+
+	require.NotNil(t, result)
+	require.NotNil(t, result.firstTokenMs)
+	require.GreaterOrEqual(t, *result.firstTokenMs, 150, "ping 之后 200ms 才出现 message_start，首 token 应记 message_start 而非 ping")
+	require.Equal(t, 4, result.usage.InputTokens)
+	// ping 事件仍逐行透传给客户端
+	require.Contains(t, rec.Body.String(), `"type":"ping"`)
+}
+
 // --- 流式 happy path 测试 ---
 
 // TestStreamUpstreamResponse_NormalComplete

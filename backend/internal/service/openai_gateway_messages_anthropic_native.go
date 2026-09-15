@@ -23,6 +23,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
@@ -304,6 +305,9 @@ func (s *OpenAIGatewayService) handleNativeAnthropicStreamingResponse(
 	var firstTokenMs *int
 	clientDisconnected := false
 	sawTerminalEvent := false
+	// 当前 SSE 事件（空行分界）内最近一条 event: 行的事件名，用于识别
+	// data 载荷非 JSON 或缺 type 的 ping 保活事件。
+	pendingEventName := ""
 
 	scanner := bufio.NewScanner(resp.Body)
 	maxLineSize := defaultMaxLineSize
@@ -426,15 +430,21 @@ func (s *OpenAIGatewayService) handleNativeAnthropicStreamingResponse(
 				if anthropicStreamEventIsTerminal("", trimmed) {
 					sawTerminalEvent = true
 				}
-				if firstTokenMs == nil && trimmed != "" && trimmed != "[DONE]" {
+				if firstTokenMs == nil && trimmed != "" && trimmed != "[DONE]" && !apicompat.AnthropicSSEEventIsPing(pendingEventName, trimmed) {
 					ms := int(time.Since(startTime).Milliseconds())
 					firstTokenMs = &ms
 				}
 				parseSSEUsagePassthrough(data, usage)
+				pendingEventName = ""
 			} else {
 				trimmed := strings.TrimSpace(line)
-				if strings.HasPrefix(trimmed, "event:") && anthropicStreamEventIsTerminal(strings.TrimSpace(strings.TrimPrefix(trimmed, "event:")), "") {
-					sawTerminalEvent = true
+				if trimmed == "" {
+					pendingEventName = ""
+				} else if name, ok := extractOpenAISSEEventLine(trimmed); ok {
+					pendingEventName = name
+					if anthropicStreamEventIsTerminal(name, "") {
+						sawTerminalEvent = true
+					}
 				}
 			}
 
