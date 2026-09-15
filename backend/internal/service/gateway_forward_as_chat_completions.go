@@ -423,7 +423,7 @@ func (s *GatewayService) handleCCStreamingFromAnthropic(
 	}
 
 	processAnthropicEvent := func(event *apicompat.AnthropicStreamEvent) bool {
-		if firstChunk {
+		if firstChunk && !event.IsKeepalive() {
 			firstChunk = false
 			ms := int(time.Since(startTime).Milliseconds())
 			firstTokenMs = &ms
@@ -455,7 +455,12 @@ func (s *GatewayService) handleCCStreamingFromAnthropic(
 	for scanner.Scan() {
 		line := scanner.Text()
 		// 与缓冲路径一致：接受 SSE 紧凑格式（冒号后无空格，#4653 同根因）。
-		if _, ok := extractOpenAISSEEventLine(line); !ok {
+		eventName, ok := extractOpenAISSEEventLine(line)
+		if !ok {
+			continue
+		}
+		// ping 保活事件不产出内容，跳过以免消耗首 token 计时。
+		if eventName == "ping" {
 			continue
 		}
 
