@@ -184,7 +184,6 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 
 	// 检查是否为 Claude Code 客户端，设置到 context 中（复用已解析请求，避免二次反序列化）。
 	SetClaudeCodeClientContext(c, body, parsedReq)
-	isClaudeCodeClient := service.IsClaudeCodeClient(c.Request.Context())
 
 	// 版本检查：仅对 Claude Code 客户端，拒绝低于最低版本的请求
 	if !h.checkClaudeCodeVersion(c) {
@@ -358,7 +357,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 
 			// 检查请求拦截（预热请求、SUGGESTION MODE等）
 			if account.IsInterceptWarmupEnabled() {
-				interceptType := detectInterceptType(body, reqModel, parsedReq.MaxTokens, isClaudeCodeClient)
+				interceptType := detectInterceptType(body, reqModel, parsedReq.MaxTokens)
 				if interceptType != InterceptTypeNone {
 					if selection.Acquired && selection.ReleaseFunc != nil {
 						selection.ReleaseFunc()
@@ -681,7 +680,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 
 			// 检查请求拦截（预热请求、SUGGESTION MODE等）
 			if account.IsInterceptWarmupEnabled() {
-				interceptType := detectInterceptType(body, reqModel, parsedReq.MaxTokens, isClaudeCodeClient)
+				interceptType := detectInterceptType(body, reqModel, parsedReq.MaxTokens)
 				if interceptType != InterceptTypeNone {
 					if selection.Acquired && selection.ReleaseFunc != nil {
 						selection.ReleaseFunc()
@@ -2108,10 +2107,9 @@ func isMaxTokensOneHaikuRequest(model string, maxTokens int) bool {
 //   - body: 请求体字节
 //   - model: 请求的模型名称
 //   - maxTokens: max_tokens 值
-//   - isClaudeCodeClient: 是否已通过 Claude Code 客户端校验
-func detectInterceptType(body []byte, model string, maxTokens int, isClaudeCodeClient bool) InterceptType {
-	// 优先检查 max_tokens=1 + haiku 探测请求（流式/非流式均适用）
-	if isClaudeCodeClient && isMaxTokensOneHaikuRequest(model, maxTokens) {
+func detectInterceptType(body []byte, model string, maxTokens int) InterceptType {
+	// 优先检查 max_tokens=1 + haiku 探测请求（流式/非流式均适用，不限客户端身份）
+	if isMaxTokensOneHaikuRequest(model, maxTokens) {
 		return InterceptTypeMaxTokensOneHaiku
 	}
 
@@ -2185,6 +2183,7 @@ func sendMockInterceptStream(c *gin.Context, model string, interceptType Interce
 	// 根据拦截类型决定响应内容
 	var msgID string
 	var outputTokens int
+	var stopReason = "end_turn"
 	var textDeltas []string
 
 	switch interceptType {
@@ -2192,6 +2191,11 @@ func sendMockInterceptStream(c *gin.Context, model string, interceptType Interce
 		msgID = generateRealisticMsgID()
 		outputTokens = 1
 		textDeltas = []string{""} // 空内容
+	case InterceptTypeMaxTokensOneHaiku:
+		msgID = generateRealisticMsgID()
+		outputTokens = 1
+		textDeltas = []string{"#"}
+		stopReason = "max_tokens" // 与非流式路径一致，max_tokens=1 探测请求的 stop_reason 应为 max_tokens
 	default: // InterceptTypeWarmup
 		msgID = generateRealisticMsgID()
 		outputTokens = 2
@@ -2214,7 +2218,7 @@ func sendMockInterceptStream(c *gin.Context, model string, interceptType Interce
 	}
 
 	// Add final events
-	messageDeltaJSON := `{"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null,"stop_details":null},"usage":{"output_tokens":` + strconv.Itoa(outputTokens) + `}}`
+	messageDeltaJSON := `{"type":"message_delta","delta":{"stop_reason":"` + stopReason + `","stop_sequence":null,"stop_details":null},"usage":{"output_tokens":` + strconv.Itoa(outputTokens) + `}}`
 
 	events = append(events,
 		`event: content_block_stop`+"\n"+`data: {"index":0,"type":"content_block_stop"}`,
