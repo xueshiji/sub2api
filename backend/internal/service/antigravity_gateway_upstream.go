@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/gin-gonic/gin"
 )
@@ -163,6 +164,9 @@ func (s *AntigravityGatewayService) ForwardUpstream(ctx context.Context, c *gin.
 func (s *AntigravityGatewayService) streamUpstreamResponse(c *gin.Context, resp *http.Response, startTime time.Time) *antigravityStreamResult {
 	usage := &ClaudeUsage{}
 	var firstTokenMs *int
+	// 当前 SSE 事件（空行分界）内最近一条 event: 行的事件名，用于识别
+	// data 载荷非 JSON 或缺 type 的 ping 保活事件。
+	pendingEventName := ""
 
 	scanner := bufio.NewScanner(resp.Body)
 	maxLineSize := defaultMaxLineSize
@@ -262,12 +266,14 @@ func (s *AntigravityGatewayService) streamUpstreamResponse(c *gin.Context, resp 
 			line := ev.line
 			if data, ok := extractAnthropicSSEDataLine(line); ok {
 				upstreamResponseModelObserverFromContext(c).ObserveAnthropic([]byte(strings.TrimSpace(data)))
-			}
-
-			// 记录首 token 时间
-			if firstTokenMs == nil && len(line) > 0 {
-				ms := int(time.Since(startTime).Milliseconds())
-				firstTokenMs = &ms
+				// 记录首 token 时间：仅 content_block_delta，ping/message_start 不参与
+				trimmed := strings.TrimSpace(data)
+				firstTokenMs = apicompat.MarkFirstVisibleOutputSSE(firstTokenMs, startTime, pendingEventName, trimmed)
+				pendingEventName = ""
+			} else if trimmed := strings.TrimSpace(line); trimmed == "" {
+				pendingEventName = ""
+			} else if name, ok := extractOpenAISSEEventLine(trimmed); ok {
+				pendingEventName = name
 			}
 
 			// 尝试从 message_delta 或 message_stop 事件提取 usage

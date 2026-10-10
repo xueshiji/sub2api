@@ -433,7 +433,6 @@ func (s *GatewayService) handleCCStreamingFromAnthropic(
 
 	var usage ClaudeUsage
 	var firstTokenMs *int
-	firstChunk := true
 	writerSizeBeforeStream := c.Writer.Size()
 
 	stream := newAnthropicCompatStream(s.cfg, c, resp, "forward_as_cc", requestID)
@@ -486,11 +485,7 @@ func (s *GatewayService) handleCCStreamingFromAnthropic(
 			c.Writer.Flush()
 			return
 		}
-		if firstChunk {
-			firstChunk = false
-			ms := int(time.Since(startTime).Milliseconds())
-			firstTokenMs = &ms
-		}
+		firstTokenMs = apicompat.MarkFirstVisibleOutputEvent(firstTokenMs, startTime, event)
 
 		// Extract usage from message_delta
 		if event.Type == "message_delta" && event.Usage != nil {
@@ -529,10 +524,10 @@ func (s *GatewayService) handleCCStreamingFromAnthropic(
 			break
 		}
 		// 与缓冲路径一致：接受 SSE 紧凑格式（冒号后无空格，#4653 同根因）。
-		if _, ok := extractOpenAISSEEventLine(line); !ok {
+		eventName, ok := extractOpenAISSEEventLine(line)
+		if !ok {
 			continue
 		}
-
 		dataLine, ok := stream.nextLine()
 		if !ok {
 			break
@@ -545,6 +540,10 @@ func (s *GatewayService) handleCCStreamingFromAnthropic(
 		var event apicompat.AnthropicStreamEvent
 		if err := json.Unmarshal([]byte(payload), &event); err != nil {
 			continue
+		}
+		// data JSON 缺顶层 type 的兼容上游：事件名以 event: 行为准
+		if event.Type == "" {
+			event.Type = eventName
 		}
 
 		// Forward received usage regardless of the client stream_options.

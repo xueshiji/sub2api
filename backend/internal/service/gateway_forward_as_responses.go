@@ -593,7 +593,6 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 	clientToolRestorer := apicompat.NewResponsesClientToolStreamRestorer(clientToolMapping)
 	var usage ClaudeUsage
 	var firstTokenMs *int
-	firstChunk := true
 	writerSizeBeforeStream := c.Writer.Size()
 
 	stream := newAnthropicCompatStream(s.cfg, c, resp, "forward_as_responses", requestID)
@@ -619,11 +618,7 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 
 	// processEvent handles a single parsed Anthropic SSE event.
 	processEvent := func(event *apicompat.AnthropicStreamEvent) {
-		if firstChunk {
-			firstChunk = false
-			ms := int(time.Since(startTime).Milliseconds())
-			firstTokenMs = &ms
-		}
+		firstTokenMs = apicompat.MarkFirstVisibleOutputEvent(firstTokenMs, startTime, event)
 
 		// Extract usage from message_delta
 		if event.Type == "message_delta" && event.Usage != nil {
@@ -709,6 +704,10 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 		if !ok {
 			continue
 		}
+		// ping 保活事件不产出内容，不进入转换状态机。
+		if eventType == "ping" {
+			continue
+		}
 
 		// Read data line
 		dataLine, ok := stream.nextLine()
@@ -728,6 +727,10 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 				zap.String("event_type", eventType),
 			)
 			continue
+		}
+		// data JSON 缺顶层 type 的兼容上游：事件名以 event: 行为准
+		if event.Type == "" {
+			event.Type = eventType
 		}
 
 		observer.ObserveAnthropic([]byte(payload))

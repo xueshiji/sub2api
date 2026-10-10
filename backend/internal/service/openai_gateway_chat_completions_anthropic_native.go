@@ -347,7 +347,6 @@ func (s *OpenAIGatewayService) handleCCStreamingFromNativeAnthropic(
 
 	var usage ClaudeUsage
 	var firstTokenMs *int
-	firstChunk := true
 	clientDisconnected := false
 
 	scanner := bufio.NewScanner(resp.Body)
@@ -421,11 +420,7 @@ func (s *OpenAIGatewayService) handleCCStreamingFromNativeAnthropic(
 	}
 
 	processAnthropicEvent := func(event *apicompat.AnthropicStreamEvent) bool {
-		if firstChunk {
-			firstChunk = false
-			ms := int(time.Since(startTime).Milliseconds())
-			firstTokenMs = &ms
-		}
+		firstTokenMs = apicompat.MarkFirstVisibleOutputEvent(firstTokenMs, startTime, event)
 
 		// usage 恒累计（含客户端断开后的排水阶段，payg 上游照常计费）。
 		if event.Type == "message_delta" && event.Usage != nil {
@@ -469,7 +464,12 @@ func (s *OpenAIGatewayService) handleCCStreamingFromNativeAnthropic(
 			streamStatus.readErr = rerr
 			break
 		}
-		if _, ok := extractOpenAISSEEventLine(line); !ok {
+		eventName, ok := extractOpenAISSEEventLine(line)
+		if !ok {
+			continue
+		}
+		// ping 保活事件不产出内容，不进入转换状态机。
+		if eventName == "ping" {
 			continue
 		}
 
@@ -491,6 +491,10 @@ func (s *OpenAIGatewayService) handleCCStreamingFromNativeAnthropic(
 		var event apicompat.AnthropicStreamEvent
 		if err := json.Unmarshal([]byte(payload), &event); err != nil {
 			continue
+		}
+		// data JSON 缺顶层 type 的兼容上游：事件名以 event: 行为准
+		if event.Type == "" {
+			event.Type = eventName
 		}
 
 		streamStatus.observe(&event, payload)

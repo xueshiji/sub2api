@@ -7,6 +7,9 @@ package apicompat
 import (
 	"bytes"
 	"encoding/json"
+	"time"
+
+	"github.com/tidwall/gjson"
 )
 
 // ---------------------------------------------------------------------------
@@ -202,6 +205,65 @@ type AnthropicStreamEvent struct {
 
 	// message_delta
 	Usage *AnthropicUsage `json:"usage,omitempty"`
+}
+
+// CarriesVisibleOutput 报告事件是否携带可见模型输出（首 token 计时点）：
+// 非空负载的 content_block_delta（text/thinking/partial_json/signature），
+// 或 content_block_start 携带的初始文本。受理即回的 message_start、ping
+// 与空负载增量不计时。
+func (e *AnthropicStreamEvent) CarriesVisibleOutput() bool {
+	if e == nil {
+		return false
+	}
+	switch e.Type {
+	case "content_block_delta":
+		d := e.Delta
+		return d != nil && (d.Text != "" || d.Thinking != "" || d.PartialJSON != "" || d.Signature != "")
+	case "content_block_start":
+		return e.ContentBlock != nil && e.ContentBlock.Text != ""
+	}
+	return false
+}
+
+// AnthropicSSEEventCarriesVisibleOutput 报告 SSE 事件是否携带可见模型输出
+// （事件 type 以 data JSON 优先、缺失时回落 event: 行事件名）。部分 Anthropic
+// 兼容上游（如智谱）在受理请求时即返回 message_start，真实增量要等排队/预填充
+// 完成后才流出，TTFT 只能锚定在首个携带输出的增量上；空负载增量不消耗计时点。
+func AnthropicSSEEventCarriesVisibleOutput(eventName, data string) bool {
+	eventType := gjson.Get(data, "type").String()
+	if eventType == "" {
+		eventType = eventName
+	}
+	switch eventType {
+	case "content_block_delta":
+		delta := gjson.Get(data, "delta")
+		return delta.Get("text").String() != "" ||
+			delta.Get("thinking").String() != "" ||
+			delta.Get("partial_json").String() != "" ||
+			delta.Get("signature").String() != ""
+	case "content_block_start":
+		return gjson.Get(data, "content_block.text").String() != ""
+	}
+	return false
+}
+
+// MarkFirstVisibleOutputSSE 在 firstTokenMs 尚未记录且该 SSE 事件携带可见输出时，
+// 记录自 startTime 起的毫秒数；未命中时原样返回传入指针。
+func MarkFirstVisibleOutputSSE(firstTokenMs *int, startTime time.Time, eventName, data string) *int {
+	if firstTokenMs != nil || !AnthropicSSEEventCarriesVisibleOutput(eventName, data) {
+		return firstTokenMs
+	}
+	ms := int(time.Since(startTime).Milliseconds())
+	return &ms
+}
+
+// MarkFirstVisibleOutputEvent 是解析事件形态的对应入口。
+func MarkFirstVisibleOutputEvent(firstTokenMs *int, startTime time.Time, event *AnthropicStreamEvent) *int {
+	if firstTokenMs != nil || !event.CarriesVisibleOutput() {
+		return firstTokenMs
+	}
+	ms := int(time.Since(startTime).Milliseconds())
+	return &ms
 }
 
 // AnthropicDelta carries incremental content in streaming events.

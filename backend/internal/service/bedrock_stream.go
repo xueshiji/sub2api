@@ -16,6 +16,7 @@ import (
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 )
 
@@ -137,10 +138,7 @@ func (s *GatewayService) handleBedrockStreamingResponse(
 				continue
 			}
 
-			if firstTokenMs == nil {
-				ms := int(time.Since(startTime).Milliseconds())
-				firstTokenMs = &ms
-			}
+			firstTokenMs = apicompat.MarkFirstVisibleOutputSSE(firstTokenMs, startTime, "", string(sseData))
 
 			// 转换 Bedrock 特有的 amazon-bedrock-invocationMetrics 为标准 Anthropic usage 格式
 			// 同时移除该字段避免透传给客户端
