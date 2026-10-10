@@ -430,10 +430,7 @@ func (s *OpenAIGatewayService) handleNativeAnthropicStreamingResponse(
 				if anthropicStreamEventIsTerminal("", trimmed) {
 					sawTerminalEvent = true
 				}
-				if firstTokenMs == nil && trimmed != "" && trimmed != "[DONE]" && !apicompat.AnthropicSSEEventIsPing(pendingEventName, trimmed) {
-					ms := int(time.Since(startTime).Milliseconds())
-					firstTokenMs = &ms
-				}
+				firstTokenMs = apicompat.MarkFirstVisibleOutputSSE(firstTokenMs, startTime, pendingEventName, trimmed)
 				parseSSEUsagePassthrough(data, usage)
 				pendingEventName = ""
 			} else {

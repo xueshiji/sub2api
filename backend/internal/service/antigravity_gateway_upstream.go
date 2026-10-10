@@ -257,12 +257,9 @@ func (s *AntigravityGatewayService) streamUpstreamResponse(c *gin.Context, resp 
 			line := ev.line
 			if data, ok := extractAnthropicSSEDataLine(line); ok {
 				upstreamResponseModelObserverFromContext(c).ObserveAnthropic([]byte(strings.TrimSpace(data)))
-				// 记录首 token 时间：仅 data 行，ping 保活事件不参与
+				// 记录首 token 时间：仅 content_block_delta，ping/message_start 不参与
 				trimmed := strings.TrimSpace(data)
-				if firstTokenMs == nil && trimmed != "" && trimmed != "[DONE]" && !apicompat.AnthropicSSEEventIsPing(pendingEventName, trimmed) {
-					ms := int(time.Since(startTime).Milliseconds())
-					firstTokenMs = &ms
-				}
+				firstTokenMs = apicompat.MarkFirstVisibleOutputSSE(firstTokenMs, startTime, pendingEventName, trimmed)
 				pendingEventName = ""
 			} else if trimmed := strings.TrimSpace(line); trimmed == "" {
 				pendingEventName = ""

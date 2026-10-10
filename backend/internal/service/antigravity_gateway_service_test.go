@@ -1222,6 +1222,7 @@ func TestStreamUpstreamResponse_UsageAndFirstToken(t *testing.T) {
 
 	go func() {
 		defer func() { _ = pw.Close() }()
+		fmt.Fprintln(pw, `data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"你"}}`)
 		fmt.Fprintln(pw, `data: {"usage":{"input_tokens":1,"output_tokens":2,"cache_read_input_tokens":3,"cache_creation_input_tokens":4}}`)
 		fmt.Fprintln(pw, `data: {"usage":{"output_tokens":5}}`)
 	}()
@@ -1270,6 +1271,8 @@ func TestStreamUpstreamResponse_PingNotCountedAsFirstToken(t *testing.T) {
 		time.Sleep(200 * time.Millisecond)
 		fmt.Fprintln(pw, `data: {"type":"message_start","message":{"usage":{"input_tokens":4}}}`)
 		fmt.Fprintln(pw, "")
+		fmt.Fprintln(pw, `data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"你"}}`)
+		fmt.Fprintln(pw, "")
 	}()
 
 	start := time.Now()
@@ -1278,7 +1281,7 @@ func TestStreamUpstreamResponse_PingNotCountedAsFirstToken(t *testing.T) {
 
 	require.NotNil(t, result)
 	require.NotNil(t, result.firstTokenMs)
-	require.GreaterOrEqual(t, *result.firstTokenMs, 150, "ping 之后 200ms 才出现 message_start，首 token 应记 message_start 而非 ping")
+	require.GreaterOrEqual(t, *result.firstTokenMs, 150, "ping 之后 200ms 才出现首个内容增量，首 token 应记 content_block_delta 而非 ping")
 	require.Equal(t, 4, result.usage.InputTokens)
 	// ping 事件仍逐行透传给客户端
 	require.Contains(t, rec.Body.String(), `"type":"ping"`)

@@ -1121,6 +1121,53 @@ func TestGatewayService_AnthropicOAuth_SystemPromptInjectionCanBeDisabled(t *tes
 	require.NotContains(t, string(upstream.lastBody), "[System Instructions]")
 }
 
+// TestGatewayService_AnthropicAPIKeyPassthrough_StreamingMessageStartNotCountedAsFirstToken
+// 验证：上游受理请求后立即返回 message_start、首个内容增量延后到达时，首 token
+// 记 content_block_delta 而非 message_start（智谱等兼容上游的受理即回行为）。
+func TestGatewayService_AnthropicAPIKeyPassthrough_StreamingMessageStartNotCountedAsFirstToken(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+
+	svc := &GatewayService{
+		cfg: &config.Config{
+			Gateway: config.GatewayConfig{
+				MaxLineSize: defaultMaxLineSize,
+			},
+		},
+		rateLimitService: &RateLimitService{},
+	}
+
+	pr, pw := io.Pipe()
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:       pr,
+	}
+
+	go func() {
+		defer func() { _ = pw.Close() }()
+		_, _ = pw.Write([]byte("data: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":11}}}\n\n"))
+		time.Sleep(200 * time.Millisecond)
+		_, _ = pw.Write([]byte("data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"你\"}}\n\n"))
+		_, _ = pw.Write([]byte("data: {\"type\":\"message_delta\",\"usage\":{\"output_tokens\":5}}\n\n"))
+		_, _ = pw.Write([]byte("data: [DONE]\n\n"))
+	}()
+
+	startTime := time.Now()
+	result, err := svc.handleStreamingResponseAnthropicAPIKeyPassthrough(context.Background(), resp, c, &Account{ID: 1}, startTime, "claude-3-7-sonnet-20250219")
+	_ = pr.Close()
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.NotNil(t, result.firstTokenMs)
+	require.GreaterOrEqual(t, *result.firstTokenMs, 150, "message_start 立即到达，200ms 后才出现首个内容增量，首 token 应记 content_block_delta")
+	require.Contains(t, rec.Body.String(), "message_start")
+	require.Equal(t, 11, result.usage.InputTokens)
+	require.Equal(t, 5, result.usage.OutputTokens)
+}
+
 func TestGatewayService_AnthropicAPIKeyPassthrough_StreamingPingEventNotCountedAsFirstToken(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
@@ -1151,6 +1198,7 @@ func TestGatewayService_AnthropicAPIKeyPassthrough_StreamingPingEventNotCountedA
 		_, _ = pw.Write([]byte("event: ping\ndata: {}\n\n"))
 		time.Sleep(200 * time.Millisecond)
 		_, _ = pw.Write([]byte("data: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":11}}}\n\n"))
+		_, _ = pw.Write([]byte("data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"你\"}}\n\n"))
 		_, _ = pw.Write([]byte("data: {\"type\":\"message_delta\",\"usage\":{\"output_tokens\":5}}\n\n"))
 		_, _ = pw.Write([]byte("data: [DONE]\n\n"))
 	}()
@@ -1161,7 +1209,7 @@ func TestGatewayService_AnthropicAPIKeyPassthrough_StreamingPingEventNotCountedA
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.NotNil(t, result.firstTokenMs)
-	require.GreaterOrEqual(t, *result.firstTokenMs, 150, "ping 到达后 200ms 才出现 message_start，首 token 应记 message_start 而非 ping")
+	require.GreaterOrEqual(t, *result.firstTokenMs, 150, "ping 到达后 200ms 才出现首个内容增量，首 token 应记 content_block_delta 而非 ping")
 	require.Contains(t, rec.Body.String(), `"type":"ping"`)
 	require.Contains(t, rec.Body.String(), "message_start")
 	require.Equal(t, 11, result.usage.InputTokens)

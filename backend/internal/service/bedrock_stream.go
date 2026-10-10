@@ -130,10 +130,7 @@ func (s *GatewayService) handleBedrockStreamingResponse(
 				continue
 			}
 
-			if firstTokenMs == nil && !apicompat.AnthropicSSEEventIsPing("", string(sseData)) {
-				ms := int(time.Since(startTime).Milliseconds())
-				firstTokenMs = &ms
-			}
+			firstTokenMs = apicompat.MarkFirstVisibleOutputSSE(firstTokenMs, startTime, "", string(sseData))
 
 			// 转换 Bedrock 特有的 amazon-bedrock-invocationMetrics 为标准 Anthropic usage 格式
 			// 同时移除该字段避免透传给客户端

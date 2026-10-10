@@ -308,6 +308,7 @@ func TestBedrockStreamingResponse_PingNotCountedAsFirstToken(t *testing.T) {
 		_, _ = pw.Write(buildChunkFrame(`{"type":"ping"}`))
 		time.Sleep(200 * time.Millisecond)
 		_, _ = pw.Write(buildChunkFrame(`{"type":"message_start","message":{"usage":{"input_tokens":9}}}`))
+		_, _ = pw.Write(buildChunkFrame(`{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"你"}}`))
 		_, _ = pw.Write(buildChunkFrame(`{"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":6}}`))
 	}()
 
@@ -318,7 +319,7 @@ func TestBedrockStreamingResponse_PingNotCountedAsFirstToken(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.NotNil(t, result.firstTokenMs)
-	require.GreaterOrEqual(t, *result.firstTokenMs, 150, "ping 之后 200ms 才出现 message_start，首 token 应记 message_start 而非 ping")
+	require.GreaterOrEqual(t, *result.firstTokenMs, 150, "ping 之后 200ms 才出现首个内容增量，首 token 应记 content_block_delta 而非 ping")
 	require.Equal(t, 9, result.usage.InputTokens)
 	require.Equal(t, 6, result.usage.OutputTokens)
 	// ping 事件仍需透传给客户端

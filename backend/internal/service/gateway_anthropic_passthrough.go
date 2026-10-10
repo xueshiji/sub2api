@@ -440,7 +440,7 @@ func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
 	clientDisconnected := false
 	sawTerminalEvent := false
 	// 当前 SSE 事件（空行分界）内最近一条 event: 行的事件名，用于识别
-	// data 载荷非 JSON 或缺 type 的 ping 保活事件。
+	// 携带可见输出的增量（data JSON 缺 type 时的回落依据）与终态事件。
 	pendingEventName := ""
 
 	scanner := bufio.NewScanner(resp.Body)
@@ -567,10 +567,7 @@ func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
 				if anthropicStreamEventIsTerminal("", trimmed) {
 					sawTerminalEvent = true
 				}
-				if firstTokenMs == nil && trimmed != "" && trimmed != "[DONE]" && !apicompat.AnthropicSSEEventIsPing(pendingEventName, trimmed) {
-					ms := int(time.Since(startTime).Milliseconds())
-					firstTokenMs = &ms
-				}
+				firstTokenMs = apicompat.MarkFirstVisibleOutputSSE(firstTokenMs, startTime, pendingEventName, trimmed)
 				parseSSEUsagePassthrough(data, usage)
 				pendingEventName = ""
 			} else {
