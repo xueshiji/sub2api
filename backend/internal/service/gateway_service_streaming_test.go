@@ -41,10 +41,9 @@ func TestGatewayService_StreamingPingEventNotCountedAsFirstToken(t *testing.T) {
 	go func() {
 		defer func() { _ = pw.Close() }()
 		_, _ = pw.Write([]byte("event: ping\ndata: {\"type\":\"ping\"}\n\n"))
-		// data 缺 type 的 ping 变体也不应消耗首 token 计时
-		_, _ = pw.Write([]byte("event: ping\ndata: {}\n\n"))
 		time.Sleep(200 * time.Millisecond)
 		_, _ = pw.Write([]byte("data: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":3}}}\n\n"))
+		_, _ = pw.Write([]byte("data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"你\"}}\n\n"))
 		_, _ = pw.Write([]byte("data: {\"type\":\"message_delta\",\"usage\":{\"output_tokens\":7}}\n\n"))
 		_, _ = pw.Write([]byte("data: [DONE]\n\n"))
 	}()
@@ -55,12 +54,44 @@ func TestGatewayService_StreamingPingEventNotCountedAsFirstToken(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.NotNil(t, result.firstTokenMs)
-	require.GreaterOrEqual(t, *result.firstTokenMs, 150, "ping 到达后 200ms 才出现 message_start，首 token 应记 message_start 而非 ping")
+	require.GreaterOrEqual(t, *result.firstTokenMs, 150, "ping 到达后 200ms 才出现首个内容增量，首 token 应记 content_block_delta 而非 ping")
 	// ping 事件仍需透传给客户端
 	require.Contains(t, rec.Body.String(), `"type":"ping"`)
 	require.Contains(t, rec.Body.String(), "message_start")
 	require.Equal(t, 3, result.usage.InputTokens)
 	require.Equal(t, 7, result.usage.OutputTokens)
+}
+
+func TestGatewayService_StreamingWithoutContentDeltaLeavesFirstTokenNull(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := newStreamingResponseTestGatewayService()
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+
+	pr, pw := io.Pipe()
+	resp := &http.Response{StatusCode: http.StatusOK, Header: http.Header{}, Body: pr}
+
+	go func() {
+		defer func() { _ = pw.Close() }()
+		_, _ = pw.Write([]byte("data: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":3}}}\n\n"))
+		_, _ = pw.Write([]byte("data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":7}}\n\n"))
+		_, _ = pw.Write([]byte("data: {\"type\":\"message_stop\"}\n\n"))
+		_, _ = pw.Write([]byte("data: [DONE]\n\n"))
+	}()
+
+	startTime := time.Now()
+	result, err := svc.handleStreamingResponse(context.Background(), resp, c, &Account{ID: 1}, startTime, "model", "model", false)
+	_ = pr.Close()
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Nil(t, result.firstTokenMs, "全程无内容增量时首 token 应记 NULL")
+	require.Equal(t, 3, result.usage.InputTokens)
+	require.Equal(t, 7, result.usage.OutputTokens)
+	// 事件仍完整透传给客户端
+	require.Contains(t, rec.Body.String(), "message_start")
+	require.Contains(t, rec.Body.String(), "message_stop")
 }
 
 func TestGatewayService_StreamingReusesScannerBufferAndStillParsesUsage(t *testing.T) {

@@ -229,6 +229,7 @@ func TestCCStreamingFromNativeAnthropic_PingNotCountedAsFirstToken(t *testing.T)
 		_, _ = pw.Write([]byte("event: ping\ndata: {}\n\n"))
 		time.Sleep(200 * time.Millisecond)
 		_, _ = pw.Write([]byte("event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_p\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"glm-4.7\",\"usage\":{\"input_tokens\":9}}}\n\n"))
+		_, _ = pw.Write([]byte("event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"你\"}}\n\n"))
 		_, _ = pw.Write([]byte("event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":6}}\n\n"))
 		_, _ = pw.Write([]byte("event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"))
 	}()
@@ -243,7 +244,7 @@ func TestCCStreamingFromNativeAnthropic_PingNotCountedAsFirstToken(t *testing.T)
 		t.Fatalf("expected result with first token timing, got %+v", res)
 	}
 	if *res.FirstTokenMs < 150 {
-		t.Fatalf("first token should be measured at message_start (200ms after ping), got %dms", *res.FirstTokenMs)
+		t.Fatalf("first token should be measured at first content_block_delta (200ms after ping), got %dms", *res.FirstTokenMs)
 	}
 	if res.Usage.InputTokens != 9 || res.Usage.OutputTokens != 6 {
 		t.Fatalf("unexpected usage: %+v", res.Usage)
@@ -266,6 +267,7 @@ func TestResponsesStreamingFromNativeAnthropic_PingNotCountedAsFirstToken(t *tes
 		_, _ = pw.Write([]byte("event: ping\ndata: {}\n\n"))
 		time.Sleep(200 * time.Millisecond)
 		_, _ = pw.Write([]byte("event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_p\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"glm-4.7\",\"usage\":{\"input_tokens\":9}}}\n\n"))
+		_, _ = pw.Write([]byte("event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"你\"}}\n\n"))
 		_, _ = pw.Write([]byte("event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":6}}\n\n"))
 		_, _ = pw.Write([]byte("event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"))
 	}()
@@ -280,7 +282,7 @@ func TestResponsesStreamingFromNativeAnthropic_PingNotCountedAsFirstToken(t *tes
 		t.Fatalf("expected result with first token timing, got %+v", res)
 	}
 	if *res.FirstTokenMs < 150 {
-		t.Fatalf("first token should be measured at message_start (200ms after ping), got %dms", *res.FirstTokenMs)
+		t.Fatalf("first token should be measured at first content_block_delta (200ms after ping), got %dms", *res.FirstTokenMs)
 	}
 	if res.Usage.InputTokens != 9 || res.Usage.OutputTokens != 6 {
 		t.Fatalf("unexpected usage: %+v", res.Usage)
@@ -303,6 +305,7 @@ func TestNativeAnthropicStreamingResponse_PingNotCountedAsFirstToken(t *testing.
 		_, _ = pw.Write([]byte("event: ping\ndata: {}\n\n"))
 		time.Sleep(200 * time.Millisecond)
 		_, _ = pw.Write([]byte("data: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":8}}}\n\n"))
+		_, _ = pw.Write([]byte("data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"你\"}}\n\n"))
 		_, _ = pw.Write([]byte("data: {\"type\":\"message_delta\",\"usage\":{\"output_tokens\":2}}\n\n"))
 		_, _ = pw.Write([]byte("data: [DONE]\n\n"))
 	}()
@@ -317,7 +320,7 @@ func TestNativeAnthropicStreamingResponse_PingNotCountedAsFirstToken(t *testing.
 		t.Fatalf("expected result with first token timing, got %+v", res)
 	}
 	if *res.FirstTokenMs < 150 {
-		t.Fatalf("first token should be measured at message_start (200ms after ping), got %dms", *res.FirstTokenMs)
+		t.Fatalf("first token should be measured at first content_block_delta (200ms after ping), got %dms", *res.FirstTokenMs)
 	}
 	if res.Usage.InputTokens != 8 || res.Usage.OutputTokens != 2 {
 		t.Fatalf("unexpected usage: %+v", res.Usage)

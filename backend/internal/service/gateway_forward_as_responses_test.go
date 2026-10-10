@@ -250,6 +250,7 @@ func TestHandleResponsesStreamingResponse_PingNotCountedAsFirstToken(t *testing.
 		time.Sleep(200 * time.Millisecond)
 		_, _ = pw.Write([]byte("event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_p\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"claude-sonnet-4.5\",\"stop_reason\":\"\",\"usage\":{\"input_tokens\":9}}}\n\n"))
 		_, _ = pw.Write([]byte("event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"hi\"}}\n\n"))
+		_, _ = pw.Write([]byte("event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"你\"}}\n\n"))
 		_, _ = pw.Write([]byte("event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":6}}\n\n"))
 		_, _ = pw.Write([]byte("event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"))
 	}()
@@ -261,7 +262,7 @@ func TestHandleResponsesStreamingResponse_PingNotCountedAsFirstToken(t *testing.
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.NotNil(t, result.FirstTokenMs)
-	require.GreaterOrEqual(t, *result.FirstTokenMs, 150, "ping 到达后 200ms 才出现 message_start，首 token 应记 message_start 而非 ping")
+	require.GreaterOrEqual(t, *result.FirstTokenMs, 150, "ping 到达后 200ms 才出现首个内容增量，首 token 应记 content_block_delta 而非 ping")
 	require.Equal(t, 9, result.Usage.InputTokens)
 	require.Equal(t, 6, result.Usage.OutputTokens)
 }

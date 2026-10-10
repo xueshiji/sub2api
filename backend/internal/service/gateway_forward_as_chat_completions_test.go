@@ -179,10 +179,9 @@ func TestHandleCCStreamingFromAnthropic_PingNotCountedAsFirstToken(t *testing.T)
 	go func() {
 		defer func() { _ = pw.Close() }()
 		_, _ = pw.Write([]byte("event: ping\ndata: {\"type\":\"ping\"}\n\n"))
-		// data 缺 type 的 ping 变体也不应消耗首 token 计时
-		_, _ = pw.Write([]byte("event: ping\ndata: {}\n\n"))
 		time.Sleep(200 * time.Millisecond)
 		_, _ = pw.Write([]byte("event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_p\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"k3\",\"stop_reason\":\"\",\"usage\":{\"input_tokens\":9}}}\n\n"))
+		_, _ = pw.Write([]byte("event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"你\"}}\n\n"))
 		_, _ = pw.Write([]byte("event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":6}}\n\n"))
 		_, _ = pw.Write([]byte("event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"))
 	}()
@@ -194,9 +193,45 @@ func TestHandleCCStreamingFromAnthropic_PingNotCountedAsFirstToken(t *testing.T)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.NotNil(t, result.FirstTokenMs)
-	require.GreaterOrEqual(t, *result.FirstTokenMs, 150, "ping 到达后 200ms 才出现 message_start，首 token 应记 message_start 而非 ping")
+	require.GreaterOrEqual(t, *result.FirstTokenMs, 150, "ping 到达后 200ms 才出现首个内容增量，首 token 应记 content_block_delta 而非 ping")
 	require.Equal(t, 9, result.Usage.InputTokens)
 	require.Equal(t, 6, result.Usage.OutputTokens)
+}
+
+func TestHandleCCStreamingFromAnthropic_EventNameFallbackForMissingType(t *testing.T) {
+	t.Parallel()
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+
+	resp := &http.Response{
+		Header: http.Header{"x-request-id": []string{"rid_cc_stream_type_fallback"}},
+		Body: io.NopCloser(strings.NewReader(strings.Join([]string{
+			`event:message_start`,
+			`data:{"type":"message_start","message":{"id":"msg_c3","type":"message","role":"assistant","content":[],"model":"k3","stop_reason":"","usage":{"input_tokens":21}}}`,
+			``,
+			`event:content_block_delta`,
+			`data:{"index":0,"delta":{"type":"text_delta","text":"你"}}`,
+			``,
+			`event:message_delta`,
+			`data:{"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":4}}`,
+			``,
+			`event:message_stop`,
+			`data:{"type":"message_stop"}`,
+			``,
+		}, "\n"))),
+	}
+
+	svc := &GatewayService{}
+	startTime := time.Now()
+	result, err := svc.handleCCStreamingFromAnthropic(resp, c, "k3", "k3", nil, startTime, true)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.NotNil(t, result.FirstTokenMs, "data 缺顶层 type 时应回落 event 行事件名记录首 token")
+	require.Equal(t, 21, result.Usage.InputTokens)
+	require.Equal(t, 4, result.Usage.OutputTokens)
+	require.Contains(t, rec.Body.String(), "你", "缺 type 的增量事件仍应被转换输出给客户端")
 }
 
 func TestHandleCCStreamingFromAnthropic_PreservesMessageStartCacheUsageAndReasoning(t *testing.T) {

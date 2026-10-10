@@ -896,10 +896,7 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 			return []string{block}, dataLine, nil, nil
 		}
 
-		if firstTokenMs == nil && !apicompat.AnthropicSSEEventIsPing(eventName, dataLine) {
-			ms := int(time.Since(startTime).Milliseconds())
-			firstTokenMs = &ms
-		}
+		firstTokenMs = apicompat.MarkFirstVisibleOutputSSE(firstTokenMs, startTime, eventName, dataLine)
 
 		var event map[string]any
 		if err := json.Unmarshal([]byte(dataLine), &event); err != nil {
@@ -1026,17 +1023,50 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 		return []string{block}, string(newData), usagePatch, nil
 	}
 
+	// SSE 规范要求流结束时补发缓冲中的残余事件：截断流（RST/未写完即关闭）的
+	// 最后一条未以空行结尾的帧若不 flush，内容、usage 与首 token 锚点会整体丢失。
+	flushPendingEvents := func() {
+		if len(pendingEventLines) == 0 {
+			return
+		}
+		outputBlocks, _, usagePatch, _ := processSSEEvent(pendingEventLines)
+		pendingEventLines = pendingEventLines[:0]
+		// 客户端已断开，或尚未写过任何字节（上层可能 failover 重放整条流）时
+		// 不写残帧，只合并 usage。
+		if clientDisconnected || !c.Writer.Written() {
+			if usagePatch != nil {
+				mergeSSEUsagePatch(usage, usagePatch)
+			}
+			return
+		}
+		for _, block := range outputBlocks {
+			restored := reverseToolNamesIfPresent(c, []byte(block))
+			if _, werr := fmt.Fprint(w, string(restored)); werr != nil {
+				clientDisconnected = true
+				break
+			}
+		}
+		if !clientDisconnected {
+			flusher.Flush()
+		}
+		if usagePatch != nil {
+			mergeSSEUsagePatch(usage, usagePatch)
+		}
+	}
+
 	for {
 		select {
 		case ev, ok := <-events:
 			if !ok {
 				// 上游完成，返回结果
+				flushPendingEvents()
 				if !sawTerminalEvent {
 					return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: clientDisconnected}, fmt.Errorf("stream usage incomplete: missing terminal event")
 				}
 				return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: clientDisconnected}, nil
 			}
 			if ev.err != nil {
+				flushPendingEvents()
 				if sawTerminalEvent {
 					return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: clientDisconnected}, nil
 				}
@@ -1125,6 +1155,7 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 			if time.Since(lastRead) < streamInterval {
 				continue
 			}
+			flushPendingEvents()
 			if clientDisconnected {
 				return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: true}, fmt.Errorf("stream usage incomplete after timeout")
 			}

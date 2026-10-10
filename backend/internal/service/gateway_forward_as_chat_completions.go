@@ -386,7 +386,6 @@ func (s *GatewayService) handleCCStreamingFromAnthropic(
 
 	var usage ClaudeUsage
 	var firstTokenMs *int
-	firstChunk := true
 
 	scanner := bufio.NewScanner(resp.Body)
 	maxLineSize := defaultMaxLineSize
@@ -423,11 +422,7 @@ func (s *GatewayService) handleCCStreamingFromAnthropic(
 	}
 
 	processAnthropicEvent := func(event *apicompat.AnthropicStreamEvent) bool {
-		if firstChunk && !event.IsKeepalive() {
-			firstChunk = false
-			ms := int(time.Since(startTime).Milliseconds())
-			firstTokenMs = &ms
-		}
+		firstTokenMs = apicompat.MarkFirstVisibleOutputEvent(firstTokenMs, startTime, event)
 
 		// Extract usage from message_delta
 		if event.Type == "message_delta" && event.Usage != nil {
@@ -459,7 +454,7 @@ func (s *GatewayService) handleCCStreamingFromAnthropic(
 		if !ok {
 			continue
 		}
-		// ping 保活事件不产出内容，跳过以免消耗首 token 计时。
+		// ping 保活事件不产出内容，不进入转换状态机。
 		if eventName == "ping" {
 			continue
 		}
@@ -475,6 +470,10 @@ func (s *GatewayService) handleCCStreamingFromAnthropic(
 		var event apicompat.AnthropicStreamEvent
 		if err := json.Unmarshal([]byte(payload), &event); err != nil {
 			continue
+		}
+		// data JSON 缺顶层 type 的兼容上游：事件名以 event: 行为准
+		if event.Type == "" {
+			event.Type = eventName
 		}
 
 		if processAnthropicEvent(&event) {
