@@ -167,10 +167,15 @@
                   <span class="font-medium text-gray-900 dark:text-white">{{ row.output_tokens?.toLocaleString() || 0 }}</span>
                 </div>
               </div>
-              <div v-if="row.cache_read_tokens > 0 || row.cache_creation_tokens > 0" class="flex items-center gap-2">
-                <div v-if="row.cache_read_tokens > 0" class="inline-flex items-center gap-1">
+              <div v-if="row.cache_read_tokens > 0 || row.cache_creation_tokens > 0 || hasCacheHitAdjustment(row)" class="flex items-center gap-2">
+                <div v-if="row.cache_read_tokens > 0 || hasCacheHitAdjustment(row)" class="inline-flex items-center gap-1">
                   <svg class="h-3.5 w-3.5 text-sky-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" /></svg>
                   <span class="font-medium text-sky-600 dark:text-sky-400">{{ formatCacheTokens(row.cache_read_tokens) }}</span>
+                  <span
+                    v-if="hasCacheHitAdjustment(row)"
+                    :title="cacheHitAdjustmentBadgeTitle(row)"
+                    class="inline-flex items-center rounded px-1 py-px text-[10px] font-medium leading-tight bg-amber-100 text-amber-700 ring-1 ring-inset ring-amber-200 dark:bg-amber-500/20 dark:text-amber-300 dark:ring-amber-500/30 cursor-help"
+                  >-{{ formatCacheHitAdjustmentPercent(row.cache_hit_rate_adjustment) }}%</span>
                 </div>
                 <div v-if="row.cache_creation_tokens > 0" class="inline-flex items-center gap-1">
                   <svg class="h-3.5 w-3.5 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
@@ -391,9 +396,27 @@
               </span>
               <span class="font-medium text-rose-400">{{ tokenTooltipData.cache_creation_1h_tokens > 0 ? t('usage.cacheTtlOverridden1h') : t('usage.cacheTtlOverridden5m') }}</span>
             </div>
-            <div v-if="tokenTooltipData && tokenTooltipData.cache_read_tokens > 0" class="flex items-center justify-between gap-4">
+            <div v-if="tokenTooltipData && (tokenTooltipData.cache_read_tokens > 0 || hasCacheHitAdjustment(tokenTooltipData))" class="flex items-center justify-between gap-4">
               <span class="text-gray-400">{{ t('admin.usage.cacheReadTokens') }}</span>
               <span class="font-medium text-white">{{ tokenTooltipData.cache_read_tokens.toLocaleString() }}</span>
+            </div>
+            <div v-if="tokenTooltipData && hasCacheHitAdjustment(tokenTooltipData)" class="mt-1 space-y-1 border-t border-gray-700/80 pt-1">
+              <div class="flex items-center justify-between gap-4 text-[11px]">
+                <span class="text-amber-300">{{ t('admin.usage.cacheHitAdjustmentAudit') }}</span>
+                <span class="font-medium text-amber-300">-{{ formatCacheHitAdjustmentPercent(tokenTooltipData.cache_hit_rate_adjustment) }}%</span>
+              </div>
+              <div class="flex items-center justify-between gap-4 text-[11px]">
+                <span class="text-gray-400">{{ t('admin.usage.rawInputTokens') }}</span>
+                <span class="font-medium text-gray-200">{{ rawInputTokens(tokenTooltipData).toLocaleString() }}</span>
+              </div>
+              <div class="flex items-center justify-between gap-4 text-[11px]">
+                <span class="text-gray-400">{{ t('admin.usage.rawCacheReadTokens') }}</span>
+                <span class="font-medium text-gray-200">{{ rawCacheReadTokens(tokenTooltipData).toLocaleString() }}</span>
+              </div>
+              <div class="flex items-center justify-between gap-4 text-[11px]">
+                <span class="text-gray-400">{{ t('admin.usage.cacheReadTokensReduction') }}</span>
+                <span class="font-medium text-amber-300">-{{ (tokenTooltipData.cache_read_tokens_reduction ?? 0).toLocaleString() }}</span>
+              </div>
             </div>
           </div>
           <div class="flex items-center justify-between gap-6 border-t border-gray-700 pt-1.5">
@@ -583,6 +606,33 @@ import {
   textInputTokens,
   hasImageInputCost,
 } from '@/utils/imageUsage'
+import { formatCacheHitAdjustmentPercent } from '@/views/admin/groupsCacheHitAdjustment'
+
+function hasCacheHitAdjustment(row: { cache_read_tokens_reduction?: number | null }): boolean {
+  return (row.cache_read_tokens_reduction ?? 0) > 0
+}
+
+function rawInputTokens(row: { input_tokens: number; cache_read_tokens_reduction?: number | null }): number {
+  return Math.max(0, (row.input_tokens || 0) - (row.cache_read_tokens_reduction ?? 0))
+}
+
+function rawCacheReadTokens(row: { cache_read_tokens: number; cache_read_tokens_reduction?: number | null }): number {
+  return (row.cache_read_tokens || 0) + (row.cache_read_tokens_reduction ?? 0)
+}
+
+function cacheHitAdjustmentBadgeTitle(row: {
+  input_tokens: number
+  cache_read_tokens: number
+  cache_hit_rate_adjustment?: number | null
+  cache_read_tokens_reduction?: number | null
+}): string {
+  return t('admin.usage.cacheHitAdjustmentBadgeHint', {
+    rate: formatCacheHitAdjustmentPercent(row.cache_hit_rate_adjustment),
+    reduction: (row.cache_read_tokens_reduction ?? 0).toLocaleString(),
+    rawCacheRead: rawCacheReadTokens(row).toLocaleString(),
+    rawInput: rawInputTokens(row).toLocaleString(),
+  })
+}
 
 /** Compute the account-billed cost for display: (account_stats_cost ?? total_cost) * rate_multiplier */
 function accountBilled(row: { total_cost?: number | null; account_stats_cost?: number | null; account_rate_multiplier?: number | null }): number {

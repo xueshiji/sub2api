@@ -17,6 +17,7 @@ import (
 	"github.com/tidwall/sjson"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/cachehitadj"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 )
 
@@ -110,6 +111,10 @@ func (s *GatewayService) handleBedrockStreamingResponse(
 		intervalCh = intervalTicker.C
 	}
 
+	// 改写器跨事件保存 message_start 的用量快照；计费始终解析改写前的真实值。
+	cacheAdj := cacheHitRateAdjustmentFromContext(ctx)
+	cacheUsageRewriter := &cachehitadj.AnthropicStreamRewriter{}
+
 	for {
 		select {
 		case ev, ok := <-events:
@@ -146,6 +151,10 @@ func (s *GatewayService) handleBedrockStreamingResponse(
 
 			// 解析 SSE 事件数据提取 usage
 			parseSSEUsagePassthrough(string(sseData), usage)
+
+			if cacheAdj > 0 {
+				sseData = cacheUsageRewriter.Rewrite(sseData, cacheAdj)
+			}
 
 			// 确定 SSE event type
 			eventType := gjson.GetBytes(sseData, "type").String()

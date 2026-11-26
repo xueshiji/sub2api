@@ -73,6 +73,73 @@ func TestParseClaudeUsageFromResponseBodyNormalizesCNProviderAliases(t *testing.
 	}
 }
 
+func TestAnthropicUsageWithoutPromptTotalPreservesInputTokens(t *testing.T) {
+	for _, parser := range []struct {
+		name  string
+		parse func([]byte) (ClaudeUsage, error)
+	}{
+		{name: "generic", parse: func(body []byte) (ClaudeUsage, error) {
+			_, usage, err := readAnthropicResponseUsage(body)
+			return usage, err
+		}},
+		{name: "passthrough", parse: func(body []byte) (ClaudeUsage, error) {
+			return *parseClaudeUsageFromResponseBody(body), nil
+		}},
+		{name: "antigravity", parse: func(body []byte) (ClaudeUsage, error) {
+			return *(&AntigravityGatewayService{}).extractClaudeUsage(body), nil
+		}},
+	} {
+		for _, tc := range []struct {
+			name      string
+			usage     string
+			wantCache int
+		}{
+			{name: "zero hit alias", usage: `{"input_tokens":1000,"output_tokens":1,"prompt_cache_hit_tokens":0}`},
+			{name: "positive hit alias", usage: `{"input_tokens":1000,"output_tokens":1,"prompt_cache_hit_tokens":800}`, wantCache: 800},
+			{name: "zero prompt total", usage: `{"input_tokens":1000,"output_tokens":1,"prompt_tokens":0,"prompt_cache_hit_tokens":800}`, wantCache: 800},
+		} {
+			t.Run(parser.name+"/"+tc.name, func(t *testing.T) {
+				usage, err := parser.parse([]byte(`{"usage":` + tc.usage + `}`))
+				require.NoError(t, err)
+				require.Equal(t, 1000, usage.InputTokens)
+				require.Equal(t, tc.wantCache, usage.CacheReadInputTokens)
+				require.Equal(t, 1, usage.OutputTokens)
+			})
+		}
+	}
+}
+
+func TestAnthropicUsageDeltaWithoutPromptTotalPreservesInputTokens(t *testing.T) {
+	for _, parser := range []struct {
+		name  string
+		parse func(string, *ClaudeUsage)
+	}{
+		{name: "generic", parse: (&GatewayService{}).parseSSEUsage},
+		{name: "passthrough", parse: parseSSEUsagePassthrough},
+		{name: "antigravity", parse: (&AntigravityGatewayService{}).mergeSSEUsageData},
+	} {
+		for _, tc := range []struct {
+			name      string
+			delta     string
+			wantInput int
+		}{
+			{name: "zero hit alias", delta: `{"output_tokens":10,"prompt_cache_hit_tokens":0}`, wantInput: 200},
+			{name: "positive hit alias", delta: `{"output_tokens":10,"prompt_cache_hit_tokens":800}`, wantInput: 200},
+			{name: "zero prompt total", delta: `{"output_tokens":10,"prompt_tokens":0,"prompt_cache_hit_tokens":800}`, wantInput: 200},
+			{name: "updated input", delta: `{"input_tokens":1000,"output_tokens":10,"prompt_cache_hit_tokens":800}`, wantInput: 1000},
+		} {
+			t.Run(parser.name+"/"+tc.name, func(t *testing.T) {
+				usage := &ClaudeUsage{}
+				parser.parse(`{"type":"message_start","message":{"usage":{"input_tokens":200,"cache_read_input_tokens":800}}}`, usage)
+				parser.parse(`{"type":"message_delta","usage":`+tc.delta+`}`, usage)
+				require.Equal(t, tc.wantInput, usage.InputTokens)
+				require.Equal(t, 800, usage.CacheReadInputTokens)
+				require.Equal(t, 10, usage.OutputTokens)
+			})
+		}
+	}
+}
+
 func TestParseSSEUsagePassthroughNormalizesGLMAndDeepSeekAliases(t *testing.T) {
 	tests := []struct {
 		name          string

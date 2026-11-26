@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/cachehitadj"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	coderws "github.com/coder/websocket"
 	"github.com/gin-gonic/gin"
@@ -483,10 +484,12 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		}, nil
 	}
 
+	cacheHitAdj := newOpenAIWSTurnCacheHitAdjustment(cacheHitRateAdjustmentFromContext(ctx))
 	writeClientMessage := func(message []byte) error {
 		writeCtx, cancel := newOpenAIWSDownstreamWriteContext(ctx, hooks, s.openAIWSWriteTimeout())
 		defer cancel()
 		message = restoreCodexToolNamesFromContext(c, message)
+		message = cachehitadj.RewriteOpenAIUsageJSON(message, cacheHitAdj.load())
 		return clientConn.Write(writeCtx, coderws.MessageText, message)
 	}
 
@@ -594,6 +597,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 					return err
 				}
 			}
+			cacheHitAdj.refresh(turn, hooks)
 			if turnState != "" && c != nil && c.Request != nil {
 				c.Request.Header.Set(openAIWSTurnStateHeader, turnState)
 			}
@@ -1486,6 +1490,10 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			if err := hooks.BeforeTurn(turn); err != nil {
 				return err
 			}
+		}
+		// A retried turn keeps its billing group, so it also keeps its ratio.
+		if !skipBeforeTurn {
+			cacheHitAdj.refresh(turn, hooks)
 		}
 		skipBeforeTurn = false
 		// 剥离本会话已知失效的加密项，阻断同一失效密文随历史反复触发上游拒绝。

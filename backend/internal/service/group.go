@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/domain"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/cachehitadj"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 )
 
@@ -142,6 +143,9 @@ type Group struct {
 	ProfitControlEnabled bool
 	ProfitMinMargin      float64 // 最低毛利率，小数存储（0.30=30%）
 	ProfitSafetyBuffer   float64 // 安全缓冲，小数，与 margin 相加后从 D 中扣除
+
+	// 缓存命中率修正比例（小数 0~0.10，对应 0%~10%，0 表示关闭）。
+	CacheHitRateAdjustment float64
 
 	CreatedAt time.Time
 	UpdatedAt time.Time
@@ -631,4 +635,14 @@ func (g *Group) GetSearchPricePer1k() *float64 {
 		return nil
 	}
 	return g.SearchPricePer1k
+}
+
+// ValidateCacheHitRateAdjustment validates group cache_hit_rate_adjustment in [0, 0.10].
+func ValidateCacheHitRateAdjustment(v float64) error {
+	return cachehitadj.ValidateAdjustment(v)
+}
+
+// NormalizeCacheHitRateAdjustment clamps and rounds cache_hit_rate_adjustment to 4 decimals.
+func NormalizeCacheHitRateAdjustment(v float64) float64 {
+	return cachehitadj.NormalizeAdjustment(v)
 }

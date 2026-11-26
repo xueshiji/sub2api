@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/cachehitadj"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
@@ -544,6 +545,9 @@ func (s *GatewayService) handleResponsesBufferedStreamingResponse(
 		if err != nil {
 			return nil, fmt.Errorf("restore responses client tools: %w", err)
 		}
+		if cacheAdj := cacheHitRateAdjustmentFromGin(c); cacheAdj > 0 {
+			respBytes = cachehitadj.RewriteOpenAIUsageJSON(respBytes, cacheAdj)
+		}
 		c.Data(http.StatusOK, "application/json; charset=utf-8", respBytes)
 	} else {
 		c.JSON(http.StatusOK, responsesResp)
@@ -617,6 +621,7 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 	}
 
 	// processEvent handles a single parsed Anthropic SSE event.
+	cacheAdj := cacheHitRateAdjustmentFromGin(c)
 	processEvent := func(event *apicompat.AnthropicStreamEvent) {
 		firstTokenMs = apicompat.MarkFirstVisibleOutputEvent(firstTokenMs, startTime, event)
 
@@ -659,6 +664,9 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 				continue
 			}
 			for _, restored := range payloads {
+				if cacheAdj > 0 {
+					restored = cachehitadj.RewriteOpenAIUsageJSON(restored, cacheAdj)
+				}
 				eventType := gjson.GetBytes(restored, "type").String()
 				if _, err := fmt.Fprintf(c.Writer, "event: %s\ndata: %s\n\n", eventType, restored); err != nil {
 					stream.markClientDisconnected()
@@ -687,6 +695,9 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 					continue
 				}
 				out := reverseToolNamesIfPresentString(c, sse)
+				if cacheAdj > 0 {
+					out = rewriteSSEBlock(out, cacheAdj, cachehitadj.RewriteOpenAIUsageJSON)
+				}
 				fmt.Fprint(c.Writer, out) //nolint:errcheck
 			}
 			c.Writer.Flush()

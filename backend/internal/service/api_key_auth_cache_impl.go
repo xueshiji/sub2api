@@ -14,7 +14,7 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-const apiKeyAuthSnapshotVersion = 30 // v30: per-model peak/off-peak multiplier rules; v29: group token limit fields; v28: group force_openai_ultrafast (OpenAI gateway reads it from ctx)
+const apiKeyAuthSnapshotVersion = 31 // v31: group cache_hit_rate_adjustment; v30: per-model peak/off-peak multiplier rules; v29: group token limit fields; v28: group force_openai_ultrafast (OpenAI gateway reads it from ctx)
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
@@ -443,6 +443,7 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 			ProfitControlEnabled:            apiKey.Group.ProfitControlEnabled,
 			ProfitMinMargin:                 apiKey.Group.ProfitMinMargin,
 			ProfitSafetyBuffer:              apiKey.Group.ProfitSafetyBuffer,
+			CacheHitRateAdjustment:          apiKey.Group.CacheHitRateAdjustment,
 			RequirePrivacySet:               apiKey.Group.RequirePrivacySet,
 		}
 	}
@@ -554,6 +555,7 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 			ProfitControlEnabled:            snapshot.Group.ProfitControlEnabled,
 			ProfitMinMargin:                 snapshot.Group.ProfitMinMargin,
 			ProfitSafetyBuffer:              snapshot.Group.ProfitSafetyBuffer,
+			CacheHitRateAdjustment:          snapshot.Group.CacheHitRateAdjustment,
 			RequirePrivacySet:               snapshot.Group.RequirePrivacySet,
 		}
 	}

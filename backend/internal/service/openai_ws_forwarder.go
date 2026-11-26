@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math/rand"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
@@ -262,11 +263,47 @@ type OpenAIWSIngressHooks struct {
 	ReasoningEffortMappings []ReasoningEffortMapping
 	TurnStarted             func(turn int, startedAt time.Time)
 	BeforeTurn              func(turn int) error
-	BeforeRequest           func(turn int, payload []byte, originalModel string) error
+	// TurnCacheHitRateAdjustment returns the cache hit rate adjustment ratio of
+	// the group billed for turn. The forwarder reads it after BeforeTurn of each
+	// turn; nil keeps the connect-time ratio for the whole connection.
+	TurnCacheHitRateAdjustment func(turn int) float64
+	BeforeRequest              func(turn int, payload []byte, originalModel string) error
 	// MapRequestModel resolves the current turn's client model to the model
 	// that must be written into the upstream response.create frame.
 	MapRequestModel func(turn int, originalModel string) (string, error)
 	AfterTurn       func(turn int, result *OpenAIForwardResult, turnErr error)
+}
+
+// openAIWSTurnCacheHitAdjustment is the connect-level cache hit rate adjustment
+// ratio of the turn being billed. Passthrough refreshes it on the client→upstream
+// goroutine while upstream events are rewritten on another goroutine, hence atomic.
+type openAIWSTurnCacheHitAdjustment struct {
+	ratio atomic.Pointer[float64]
+}
+
+func newOpenAIWSTurnCacheHitAdjustment(initial float64) *openAIWSTurnCacheHitAdjustment {
+	adjustment := &openAIWSTurnCacheHitAdjustment{}
+	adjustment.ratio.Store(&initial)
+	return adjustment
+}
+
+// refresh adopts the ratio of the turn's billing group once BeforeTurn succeeded.
+func (a *openAIWSTurnCacheHitAdjustment) refresh(turn int, hooks *OpenAIWSIngressHooks) {
+	if a == nil || hooks == nil || hooks.TurnCacheHitRateAdjustment == nil {
+		return
+	}
+	ratio := hooks.TurnCacheHitRateAdjustment(turn)
+	a.ratio.Store(&ratio)
+}
+
+func (a *openAIWSTurnCacheHitAdjustment) load() float64 {
+	if a == nil {
+		return 0
+	}
+	if ratio := a.ratio.Load(); ratio != nil {
+		return *ratio
+	}
+	return 0
 }
 
 func (s *OpenAIGatewayService) getOpenAIWSConnPool() *openAIWSConnPool {

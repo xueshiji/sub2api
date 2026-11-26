@@ -3170,6 +3170,10 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				currentAccountRelease = wrapReleaseOnDone(ctx, accountReleaseFunc)
 				return checkSimpleModeTurnBilling()
 			},
+			// 客户端可见用量按本 turn 计费分组的比例改写，与 RecordUsage 的计费分组同源。
+			TurnCacheHitRateAdjustment: func(turn int) float64 {
+				return service.CacheHitRateAdjustmentFromGroup(turnBillingAPIKeys.forTurn(turn, apiKey).Group)
+			},
 			AfterTurn: func(turn int, result *service.OpenAIForwardResult, turnErr error) {
 				turnStart := getTurnStart(turn)
 				cyberBlockBody := takeCyberTurnBody(turn)

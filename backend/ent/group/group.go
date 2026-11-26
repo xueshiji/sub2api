@@ -164,6 +164,8 @@ const (
 	FieldProfitMinMargin = "profit_min_margin"
 	// FieldProfitSafetyBuffer holds the string denoting the profit_safety_buffer field in the database.
 	FieldProfitSafetyBuffer = "profit_safety_buffer"
+	// FieldCacheHitRateAdjustment holds the string denoting the cache_hit_rate_adjustment field in the database.
+	FieldCacheHitRateAdjustment = "cache_hit_rate_adjustment"
 	// EdgeAPIKeys holds the string denoting the api_keys edge name in mutations.
 	EdgeAPIKeys = "api_keys"
 	// EdgeRedeemCodes holds the string denoting the redeem_codes edge name in mutations.
@@ -313,6 +315,7 @@ var Columns = []string{
 	FieldProfitControlEnabled,
 	FieldProfitMinMargin,
 	FieldProfitSafetyBuffer,
+	FieldCacheHitRateAdjustment,
 }
 
 var (
@@ -466,6 +469,8 @@ var (
 	DefaultProfitMinMargin float64
 	// DefaultProfitSafetyBuffer holds the default value on creation for the "profit_safety_buffer" field.
 	DefaultProfitSafetyBuffer float64
+	// DefaultCacheHitRateAdjustment holds the default value on creation for the "cache_hit_rate_adjustment" field.
+	DefaultCacheHitRateAdjustment float64
 )
 
 // OrderOption defines the ordering options for the Group queries.
@@ -794,6 +799,11 @@ func ByProfitMinMargin(opts ...sql.OrderTermOption) OrderOption {
 // ByProfitSafetyBuffer orders the results by the profit_safety_buffer field.
 func ByProfitSafetyBuffer(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldProfitSafetyBuffer, opts...).ToFunc()
+}
+
+// ByCacheHitRateAdjustment orders the results by the cache_hit_rate_adjustment field.
+func ByCacheHitRateAdjustment(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldCacheHitRateAdjustment, opts...).ToFunc()
 }
 
 // ByAPIKeysCount orders the results by api_keys count.

@@ -1409,6 +1409,28 @@
           </div>
         </div>
 
+        <!-- 缓存命中率修正（全平台生效，按百分比输入 0~10） -->
+        <div class="border-t pt-4">
+          <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div>
+              <label class="input-label">{{ t("admin.groups.cacheHitAdjustment.label") }}</label>
+              <input
+                v-model.number="createForm.cache_hit_rate_adjustment_percent"
+                type="number"
+                step="0.01"
+                min="0"
+                max="10"
+                class="input"
+                placeholder="0"
+                :title="t('admin.groups.cacheHitAdjustment.hint')"
+              />
+            </div>
+          </div>
+          <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+            {{ t("admin.groups.cacheHitAdjustment.hint") }}
+          </p>
+        </div>
+
         <!-- 分组利润控制（五个平台 token 请求） -->
         <div v-if="isProfitControlPlatform(createForm.platform)" class="border-t pt-4">
           <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
@@ -3203,6 +3225,28 @@
           </div>
         </div>
 
+        <!-- 缓存命中率修正（全平台生效，按百分比输入 0~10） -->
+        <div class="border-t pt-4">
+          <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div>
+              <label class="input-label">{{ t("admin.groups.cacheHitAdjustment.label") }}</label>
+              <input
+                v-model.number="editForm.cache_hit_rate_adjustment_percent"
+                type="number"
+                step="0.01"
+                min="0"
+                max="10"
+                class="input"
+                placeholder="0"
+                :title="t('admin.groups.cacheHitAdjustment.hint')"
+              />
+            </div>
+          </div>
+          <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+            {{ t("admin.groups.cacheHitAdjustment.hint") }}
+          </p>
+        </div>
+
         <!-- 分组利润控制（五个平台 token 请求） -->
         <div v-if="isProfitControlPlatform(editForm.platform)" class="border-t pt-4">
           <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
@@ -4713,6 +4757,11 @@ import {
   type ProfitControlFormState,
 } from "./groupsProfitControl";
 import {
+  cacheHitAdjustmentPercentToDecimal,
+  cacheHitAdjustmentDecimalToPercent,
+  validateCacheHitAdjustmentPercent,
+} from "./groupsCacheHitAdjustment";
+import {
   normalizeReasoningEffortForPlatform,
   normalizeReasoningEffortOverLimit,
   reasoningEffortMappingsToAPI,
@@ -5359,6 +5408,8 @@ const createForm = reactive({
   profit_control_enabled: false,
   profit_min_margin_percent: 0,
   profit_safety_buffer_percent: 0,
+  // 缓存命中率修正（0~10%，提交时转 0~0.10 小数）
+  cache_hit_rate_adjustment_percent: 0,
   // Claude Code 客户端限制（仅 anthropic 平台使用）
   claude_code_only: false,
   fallback_group_id: null as number | null,
@@ -5772,6 +5823,8 @@ const editForm = reactive({
   profit_control_enabled: false,
   profit_min_margin_percent: 0,
   profit_safety_buffer_percent: 0,
+  // 缓存命中率修正（0~10%，提交时转 0~0.10 小数）
+  cache_hit_rate_adjustment_percent: 0,
   // Claude Code 客户端限制（仅 anthropic 平台使用）
   claude_code_only: false,
   fallback_group_id: null as number | null,
@@ -6253,6 +6306,7 @@ const closeCreateModal = () => {
   createForm.profit_control_enabled = false;
   createForm.profit_min_margin_percent = 0;
   createForm.profit_safety_buffer_percent = 0;
+  createForm.cache_hit_rate_adjustment_percent = 0;
   createForm.claude_code_only = false;
   createForm.fallback_group_id = null;
   createForm.fallback_group_id_on_invalid_request = null;
@@ -6314,6 +6368,17 @@ const validateProfitControlForm = (form: ProfitControlFormState): boolean => {
   return true;
 };
 
+const validateCacheHitAdjustmentField = (
+  value: number | string | null | undefined,
+): boolean => {
+  const errorKey = validateCacheHitAdjustmentPercent(value);
+  if (errorKey) {
+    appStore.showError(t(`admin.groups.cacheHitAdjustment.${errorKey}`));
+    return false;
+  }
+  return true;
+};
+
 const validateGroupReasoningMultipliers = (pricing: PricingFormEntry[]): boolean => {
   for (const entry of pricing) {
     const error = validateReasoningEffortMultipliers(entry.reasoning_effort_multipliers, t);
@@ -6338,6 +6403,9 @@ const handleCreateGroup = async () => {
     return;
   }
   if (!validateProfitControlForm(createForm)) {
+    return;
+  }
+  if (!validateCacheHitAdjustmentField(createForm.cache_hit_rate_adjustment_percent)) {
     return;
   }
   if (!validateGroupReasoningMultipliers(createForm.model_pricing)) return;
@@ -6430,9 +6498,13 @@ const handleCreateGroup = async () => {
       profit_safety_buffer: percentToDecimal(
         createForm.profit_safety_buffer_percent,
       ),
+      cache_hit_rate_adjustment: cacheHitAdjustmentPercentToDecimal(
+        createForm.cache_hit_rate_adjustment_percent,
+      ),
     };
     delete (requestData as Record<string, unknown>).profit_min_margin_percent;
     delete (requestData as Record<string, unknown>).profit_safety_buffer_percent;
+    delete (requestData as Record<string, unknown>).cache_hit_rate_adjustment_percent;
     // v-model.number 清空输入框时产生 ""，转为 null 让后端设为无限制
     const emptyToNull = (v: any) => (v === "" ? null : v);
     requestData.daily_limit_usd = emptyToNull(requestData.daily_limit_usd);
@@ -6581,6 +6653,9 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.profit_safety_buffer_percent = decimalToPercent(
     group.profit_safety_buffer ?? 0,
   );
+  editForm.cache_hit_rate_adjustment_percent = cacheHitAdjustmentDecimalToPercent(
+    group.cache_hit_rate_adjustment ?? 0,
+  );
   editForm.claude_code_only = group.claude_code_only || false;
   editForm.fallback_group_id = group.fallback_group_id;
   editForm.fallback_group_id_on_invalid_request =
@@ -6672,6 +6747,7 @@ const closeEditModal = () => {
   editForm.profit_control_enabled = false;
   editForm.profit_min_margin_percent = 0;
   editForm.profit_safety_buffer_percent = 0;
+  editForm.cache_hit_rate_adjustment_percent = 0;
   editForm.video_rate_independent = false;
   editForm.video_rate_multiplier = 1;
   editForm.video_price_480p = null;
@@ -6710,6 +6786,9 @@ const handleUpdateGroup = async () => {
     return;
   }
   if (!validateProfitControlForm(editForm)) {
+    return;
+  }
+  if (!validateCacheHitAdjustmentField(editForm.cache_hit_rate_adjustment_percent)) {
     return;
   }
   if (!validateGroupReasoningMultipliers(editForm.model_pricing)) return;
@@ -6819,9 +6898,13 @@ const handleUpdateGroup = async () => {
       profit_safety_buffer: percentToDecimal(
         editForm.profit_safety_buffer_percent,
       ),
+      cache_hit_rate_adjustment: cacheHitAdjustmentPercentToDecimal(
+        editForm.cache_hit_rate_adjustment_percent,
+      ),
     };
     delete (payload as Record<string, unknown>).profit_min_margin_percent;
     delete (payload as Record<string, unknown>).profit_safety_buffer_percent;
+    delete (payload as Record<string, unknown>).cache_hit_rate_adjustment_percent;
     // v-model.number 清空输入框时产生 ""，转为 null 让后端设为无限制
     const emptyToNull = (v: any) => (v === "" ? null : v);
     payload.daily_limit_usd = emptyToNull(payload.daily_limit_usd);

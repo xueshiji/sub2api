@@ -133,9 +133,15 @@ func (s *AntigravityGatewayService) ForwardUpstream(ctx context.Context, c *gin.
 		upstreamResponseModelObserverFromContext(c).ObserveAnthropic(respBody)
 		usage = s.extractClaudeUsage(respBody)
 
+		clientBody := respBody
+		if cacheAdj := cacheHitRateAdjustmentFromGin(c); cacheAdj > 0 {
+			clientBody = rewriteAnthropicUsageAsBilled(respBody, cacheAdj, *usage, func(body []byte) ClaudeUsage {
+				return *s.extractClaudeUsage(body)
+			})
+		}
 		c.Header("Content-Type", resp.Header.Get("Content-Type"))
 		c.Status(http.StatusOK)
-		_, _ = c.Writer.Write(respBody)
+		_, _ = c.Writer.Write(clientBody)
 	}
 
 	// 构建计费结果
@@ -243,6 +249,15 @@ func (s *AntigravityGatewayService) streamUpstreamResponse(c *gin.Context, resp 
 
 	flusher, _ := c.Writer.(http.Flusher)
 	cw := newAntigravityClientWriter(c.Writer, flusher, "antigravity upstream")
+	cacheUsageRewriter := &cacheHitStreamRewriter{parse: func(data []byte, usage ClaudeUsage) ClaudeUsage {
+		s.mergeSSEUsageData(string(data), &usage)
+		return usage
+	}}
+	// 闭包捕获该变量，须在循环外声明。
+	usageBefore := ClaudeUsage{}
+	rewriteLine := func(data []byte, adjustment float64) []byte {
+		return cacheUsageRewriter.Rewrite(data, adjustment, usageBefore)
+	}
 
 	for {
 		select {
@@ -277,10 +292,12 @@ func (s *AntigravityGatewayService) streamUpstreamResponse(c *gin.Context, resp 
 			}
 
 			// 尝试从 message_delta 或 message_stop 事件提取 usage
+			usageBefore = *usage
 			s.extractSSEUsage(line, usage)
 
 			// 透传行
-			cw.Fprintf("%s\n", line)
+			writeLine := rewriteSSEDataLine(line, cacheHitRateAdjustmentFromGin(c), rewriteLine)
+			cw.Fprintf("%s\n", writeLine)
 
 		case <-intervalCh:
 			lastRead := time.Unix(0, atomic.LoadInt64(&lastReadAt))
@@ -324,7 +341,11 @@ func (s *AntigravityGatewayService) extractSSEUsage(line string, usage *ClaudeUs
 	if !strings.HasPrefix(line, "data: ") {
 		return
 	}
-	dataStr := strings.TrimPrefix(line, "data: ")
+	s.mergeSSEUsageData(strings.TrimPrefix(line, "data: "), usage)
+}
+
+// mergeSSEUsageData 把一条 SSE data 载荷里的 usage 并入累计值
+func (s *AntigravityGatewayService) mergeSSEUsageData(dataStr string, usage *ClaudeUsage) {
 	var event map[string]any
 	if json.Unmarshal([]byte(dataStr), &event) != nil {
 		return
@@ -361,6 +382,7 @@ func (s *AntigravityGatewayService) extractSSEUsage(line string, usage *ClaudeUs
 			usage.CacheCreation1hTokens = int(v)
 		}
 	}
+	normalizeAnthropicCompatiblePromptUsage(claudeUsageNode(u), usage)
 }
 
 // extractClaudeUsage 从非流式 Claude 响应提取 usage
@@ -392,6 +414,7 @@ func (s *AntigravityGatewayService) extractClaudeUsage(body []byte) *ClaudeUsage
 				usage.CacheCreation1hTokens = int(v)
 			}
 		}
+		normalizeAnthropicCompatiblePromptUsage(claudeUsageNode(u), usage)
 	}
 	return usage
 }

@@ -483,3 +483,42 @@ func TestChannelMonitorV2CatalogFilterClearsMultiSelectDimensions(t *testing.T) 
 	require.Equal(t, []int64{3, 4}, configuredChannelMonitorV2GroupIDs(catalog, cfg))
 	require.Equal(t, []int64{3}, configuredChannelMonitorV2GroupIDs(filter, cfg))
 }
+
+func TestChannelMonitorV2Metric_SeparatesAdminRealCacheRateFromUserAdjustedRate(t *testing.T) {
+	acc := newMetricAccumulator()
+	acc.addFact(channelMonitorV2Fact{
+		Success:            1,
+		Input:              2500, // adjusted input (raw 2000 + reduction 500)
+		Output:             100,
+		CacheCreation:      0,
+		CacheRead:          7500, // adjusted cache_read (raw 8000 - reduction 500)
+		CacheReadReduction: 500,
+	})
+
+	userMetric := acc.metric(1, false)
+	require.Equal(t, int64(2500), userMetric.InputTokens)
+	require.Equal(t, int64(7500), userMetric.CacheReadTokens)
+	require.InDelta(t, 0.75, userMetric.CacheRate, 1e-6)
+	require.Nil(t, userMetric.UpstreamAffectedRequests)
+
+	adminMetric := acc.metric(1, true)
+	require.Equal(t, int64(2000), adminMetric.InputTokens)
+	require.Equal(t, int64(8000), adminMetric.CacheReadTokens)
+	require.InDelta(t, 0.80, adminMetric.CacheRate, 1e-6)
+	require.NotNil(t, adminMetric.UpstreamAffectedRequests)
+
+	adminUsersMetric := acc.buildMetric(1, false, true)
+	require.Equal(t, int64(2000), adminUsersMetric.InputTokens)
+	require.Equal(t, int64(8000), adminUsersMetric.CacheReadTokens)
+	require.InDelta(t, 0.80, adminUsersMetric.CacheRate, 1e-6)
+	require.Nil(t, adminUsersMetric.UpstreamAffectedRequests)
+
+	for _, query := range []string{
+		channelMonitorV2UsageMetricsSQL,
+		channelMonitorV2UserMetricsSQL,
+		channelMonitorV2MetricsRollupSQL,
+		channelMonitorV2UserMetricsRollupSQL,
+	} {
+		require.Contains(t, query, "cache_read_reduction")
+	}
+}

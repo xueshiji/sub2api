@@ -1043,6 +1043,8 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 						}
 						// 兜底重试按"直接请求兜底分组"处理：清除强制平台，允许按分组平台调度
 						ctx := context.WithValue(c.Request.Context(), ctxkey.ForcePlatform, "")
+						// 冻结的计费分组同步换成兜底分组，响应 usage 改写与 RecordUsage 保持同一口径
+						ctx = service.WithGatewayTokenRequestBillingGroup(ctx, fallbackGroup)
 						c.Request = c.Request.WithContext(ctx)
 						currentAPIKey = fallbackAPIKey
 						currentSubscription = nil

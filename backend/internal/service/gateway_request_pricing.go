@@ -28,6 +28,19 @@ func WithGatewayTokenRequestPricing(ctx context.Context) (context.Context, time.
 	return ctx, pricingAt
 }
 
+// WithGatewayTokenRequestBillingGroup re-freezes the billing group when a token-billed request is
+// switched to another group that RecordUsage bills (prompt-too-long fallback), so context readers
+// such as the usage rewrite follow that group.
+func WithGatewayTokenRequestBillingGroup(ctx context.Context, group *Group) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if IsGroupContextValid(group) {
+		ctx = context.WithValue(ctx, gatewayTokenRequestBillingGroupCtxKey{}, group)
+	}
+	return ctx
+}
+
 func gatewayTokenRequestPricingAtFromContext(ctx context.Context) (time.Time, bool) {
 	if ctx == nil {
 		return time.Time{}, false

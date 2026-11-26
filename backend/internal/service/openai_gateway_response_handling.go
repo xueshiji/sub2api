@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/cachehitadj"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
@@ -758,7 +759,11 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 					shouldFlush = true
 				}
 				eventShouldFlush = eventShouldFlush || shouldFlush
-				if _, err := writePendingString(line); err != nil {
+				outLine := line
+				if cacheAdj := cacheHitRateAdjustmentFromContext(ctx); cacheAdj > 0 {
+					outLine = rewriteSSEDataLine(outLine, cacheAdj, cachehitadj.RewriteOpenAIUsageJSON)
+				}
+				if _, err := writePendingString(outLine); err != nil {
 					handlePendingWriteError(err)
 				} else if _, err := writePendingString("\n"); err != nil {
 					handlePendingWriteError(err)
@@ -1776,6 +1781,9 @@ func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, r
 		}
 	}
 
+	if cacheAdj := cacheHitRateAdjustmentFromContext(ctx); cacheAdj > 0 {
+		body = cachehitadj.RewriteOpenAIUsageJSON(body, cacheAdj)
+	}
 	if !writeOpenAICompactSSEBridge(c, resp.StatusCode, body) {
 		c.Data(resp.StatusCode, contentType, body)
 	}
@@ -1886,6 +1894,13 @@ func (s *OpenAIGatewayService) handleSSEToJSON(resp *http.Response, c *gin.Conte
 		contentType = resp.Header.Get("Content-Type")
 		if contentType == "" {
 			contentType = "text/event-stream"
+		}
+	}
+	if cacheAdj := cacheHitRateAdjustmentFromGin(c); cacheAdj > 0 {
+		if ok {
+			body = cachehitadj.RewriteOpenAIUsageJSON(body, cacheAdj)
+		} else {
+			body = []byte(rewriteSSEBlock(string(body), cacheAdj, cachehitadj.RewriteOpenAIUsageJSON))
 		}
 	}
 	if !writeOpenAICompactSSEBridge(c, resp.StatusCode, body) {

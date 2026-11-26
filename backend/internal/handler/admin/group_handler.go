@@ -251,6 +251,7 @@ type CreateGroupRequest struct {
 	ProfitControlEnabled            bool                                       `json:"profit_control_enabled"`
 	ProfitMinMargin                 *float64                                   `json:"profit_min_margin"`
 	ProfitSafetyBuffer              *float64                                   `json:"profit_safety_buffer"`
+	CacheHitRateAdjustment          *float64                                   `json:"cache_hit_rate_adjustment"`
 	ImagePrice1K                    *float64                                   `json:"image_price_1k"`
 	ImagePrice2K                    *float64                                   `json:"image_price_2k"`
 	ImagePrice4K                    *float64                                   `json:"image_price_4k"`
@@ -334,6 +335,7 @@ type UpdateGroupRequest struct {
 	ProfitControlEnabled            *bool                                      `json:"profit_control_enabled"`
 	ProfitMinMargin                 *float64                                   `json:"profit_min_margin"`
 	ProfitSafetyBuffer              *float64                                   `json:"profit_safety_buffer"`
+	CacheHitRateAdjustment          *float64                                   `json:"cache_hit_rate_adjustment"`
 	ImagePrice1K                    *float64                                   `json:"image_price_1k"`
 	ImagePrice2K                    *float64                                   `json:"image_price_2k"`
 	ImagePrice4K                    *float64                                   `json:"image_price_4k"`
@@ -724,6 +726,12 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		response.BadRequest(c, err.Error())
 		return
 	}
+	if req.CacheHitRateAdjustment != nil {
+		if err := service.ValidateCacheHitRateAdjustment(*req.CacheHitRateAdjustment); err != nil {
+			response.BadRequest(c, err.Error())
+			return
+		}
+	}
 
 	group, err := h.adminService.CreateGroup(c.Request.Context(), &service.CreateGroupInput{
 		Name:                            req.Name,
@@ -759,6 +767,7 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		ProfitControlEnabled:            req.ProfitControlEnabled,
 		ProfitMinMargin:                 req.ProfitMinMargin,
 		ProfitSafetyBuffer:              req.ProfitSafetyBuffer,
+		CacheHitRateAdjustment:          req.CacheHitRateAdjustment,
 		ImagePrice1K:                    req.ImagePrice1K,
 		ImagePrice2K:                    req.ImagePrice2K,
 		ImagePrice4K:                    req.ImagePrice4K,
@@ -882,6 +891,12 @@ func (h *GroupHandler) Update(c *gin.Context) {
 		response.BadRequest(c, err.Error())
 		return
 	}
+	if req.CacheHitRateAdjustment != nil {
+		if err := service.ValidateCacheHitRateAdjustment(*req.CacheHitRateAdjustment); err != nil {
+			response.BadRequest(c, err.Error())
+			return
+		}
+	}
 
 	group, err := h.adminService.UpdateGroup(c.Request.Context(), groupID, &service.UpdateGroupInput{
 		Name:                            req.Name,
@@ -918,6 +933,7 @@ func (h *GroupHandler) Update(c *gin.Context) {
 		ProfitControlEnabled:            req.ProfitControlEnabled,
 		ProfitMinMargin:                 req.ProfitMinMargin,
 		ProfitSafetyBuffer:              req.ProfitSafetyBuffer,
+		CacheHitRateAdjustment:          req.CacheHitRateAdjustment,
 		ImagePrice1K:                    req.ImagePrice1K,
 		ImagePrice2K:                    req.ImagePrice2K,
 		ImagePrice4K:                    req.ImagePrice4K,

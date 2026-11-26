@@ -237,6 +237,7 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 				group.FieldProfitControlEnabled,
 				group.FieldProfitMinMargin,
 				group.FieldProfitSafetyBuffer,
+				group.FieldCacheHitRateAdjustment,
 				// OpenAI 选号从 ctx 分组读取隐私门，漏选会放行未设置隐私的账号。
 				group.FieldRequirePrivacySet,
 			)
@@ -1058,6 +1059,7 @@ func groupEntityToService(g *dbent.Group) *service.Group {
 		ProfitControlEnabled:            g.ProfitControlEnabled,
 		ProfitMinMargin:                 g.ProfitMinMargin,
 		ProfitSafetyBuffer:              g.ProfitSafetyBuffer,
+		CacheHitRateAdjustment:          g.CacheHitRateAdjustment,
 		CreatedAt:                       g.CreatedAt,
 		UpdatedAt:                       g.UpdatedAt,
 	}

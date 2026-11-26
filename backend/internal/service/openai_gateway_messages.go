@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/cachehitadj"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
@@ -685,7 +686,9 @@ func (s *OpenAIGatewayService) handleAnthropicBufferedStreamingResponse(
 		responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 	}
 	c.Header("Content-Type", "application/json; charset=utf-8")
-	c.JSON(http.StatusOK, anthropicResp)
+	writeJSONWithUsageRewrite(c, http.StatusOK, anthropicResp, cacheHitRateAdjustmentFromGin(c), func(b []byte, adj float64) []byte {
+		return cachehitadj.RewriteAnthropicUsageJSON(b, "usage", adj)
+	})
 
 	result := &OpenAIForwardResult{
 		RequestID:                     requestID,
@@ -1083,6 +1086,8 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 	// failure before any content reaches the client still fails over and the
 	// next attempt starts a fresh message.
 	var held strings.Builder
+	cacheAdj := cacheHitRateAdjustmentFromGin(c)
+	cacheUsageRewriter := &cachehitadj.AnthropicStreamRewriter{}
 	emit := func(sse string, release bool) error {
 		if !clientOutputStarted && !release {
 			_, _ = held.WriteString(sse)
@@ -1093,6 +1098,7 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 			sse = held.String() + sse
 			held.Reset()
 		}
+		sse = rewriteSSEBlock(sse, cacheAdj, cacheUsageRewriter.Rewrite)
 		if _, err := fmt.Fprint(c.Writer, sse); err != nil {
 			return err
 		}

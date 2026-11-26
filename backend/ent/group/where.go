@@ -375,6 +375,11 @@ func ProfitSafetyBuffer(v float64) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldProfitSafetyBuffer, v))
 }
 
+// CacheHitRateAdjustment applies equality check predicate on the "cache_hit_rate_adjustment" field. It's identical to CacheHitRateAdjustmentEQ.
+func CacheHitRateAdjustment(v float64) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldCacheHitRateAdjustment, v))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldCreatedAt, v))
@@ -2898,6 +2903,46 @@ func ProfitSafetyBufferLT(v float64) predicate.Group {
 // ProfitSafetyBufferLTE applies the LTE predicate on the "profit_safety_buffer" field.
 func ProfitSafetyBufferLTE(v float64) predicate.Group {
 	return predicate.Group(sql.FieldLTE(FieldProfitSafetyBuffer, v))
+}
+
+// CacheHitRateAdjustmentEQ applies the EQ predicate on the "cache_hit_rate_adjustment" field.
+func CacheHitRateAdjustmentEQ(v float64) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldCacheHitRateAdjustment, v))
+}
+
+// CacheHitRateAdjustmentNEQ applies the NEQ predicate on the "cache_hit_rate_adjustment" field.
+func CacheHitRateAdjustmentNEQ(v float64) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldCacheHitRateAdjustment, v))
+}
+
+// CacheHitRateAdjustmentIn applies the In predicate on the "cache_hit_rate_adjustment" field.
+func CacheHitRateAdjustmentIn(vs ...float64) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldCacheHitRateAdjustment, vs...))
+}
+
+// CacheHitRateAdjustmentNotIn applies the NotIn predicate on the "cache_hit_rate_adjustment" field.
+func CacheHitRateAdjustmentNotIn(vs ...float64) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldCacheHitRateAdjustment, vs...))
+}
+
+// CacheHitRateAdjustmentGT applies the GT predicate on the "cache_hit_rate_adjustment" field.
+func CacheHitRateAdjustmentGT(v float64) predicate.Group {
+	return predicate.Group(sql.FieldGT(FieldCacheHitRateAdjustment, v))
+}
+
+// CacheHitRateAdjustmentGTE applies the GTE predicate on the "cache_hit_rate_adjustment" field.
+func CacheHitRateAdjustmentGTE(v float64) predicate.Group {
+	return predicate.Group(sql.FieldGTE(FieldCacheHitRateAdjustment, v))
+}
+
+// CacheHitRateAdjustmentLT applies the LT predicate on the "cache_hit_rate_adjustment" field.
+func CacheHitRateAdjustmentLT(v float64) predicate.Group {
+	return predicate.Group(sql.FieldLT(FieldCacheHitRateAdjustment, v))
+}
+
+// CacheHitRateAdjustmentLTE applies the LTE predicate on the "cache_hit_rate_adjustment" field.
+func CacheHitRateAdjustmentLTE(v float64) predicate.Group {
+	return predicate.Group(sql.FieldLTE(FieldCacheHitRateAdjustment, v))
 }
 
 // HasAPIKeys applies the HasEdge predicate on the "api_keys" edge.

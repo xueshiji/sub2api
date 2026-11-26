@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/cachehitadj"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
@@ -755,7 +756,16 @@ func (s *OpenAIGatewayService) handleChatBufferedStreamingResponse(
 	// writeContentType 仅在头不存在时才设置，无法覆盖。这里显式 Set 强制改回 JSON，
 	// 否则下游"看头判流式"的中间层（如 new-api）会把本应聚合的 JSON 当成 SSE 处理。
 	c.Writer.Header().Set("Content-Type", "application/json; charset=utf-8")
-	c.JSON(http.StatusOK, chatResp)
+	if cacheAdj := cacheHitRateAdjustmentFromGin(c); cacheAdj > 0 {
+		if respBytes, err := json.Marshal(chatResp); err == nil {
+			respBytes = cachehitadj.RewriteOpenAIUsageJSON(respBytes, cacheAdj)
+			c.Data(http.StatusOK, "application/json; charset=utf-8", respBytes)
+		} else {
+			c.JSON(http.StatusOK, chatResp)
+		}
+	} else {
+		c.JSON(http.StatusOK, chatResp)
+	}
 
 	result := &OpenAIForwardResult{
 		RequestID:                     requestID,
@@ -1024,6 +1034,9 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 						zap.String("request_id", requestID),
 					)
 					continue
+				}
+				if cacheAdj := cacheHitRateAdjustmentFromGin(c); cacheAdj > 0 {
+					sse = rewriteSSEBlock(sse, cacheAdj, cachehitadj.RewriteOpenAIUsageJSON)
 				}
 				if !clientOutputStarted && !refusalDetector.ShouldReleaseClientOutput() {
 					pendingSSE = append(pendingSSE, sse)

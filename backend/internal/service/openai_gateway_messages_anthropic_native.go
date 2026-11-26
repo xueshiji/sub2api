@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/cachehitadj"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
@@ -275,6 +276,9 @@ func (s *OpenAIGatewayService) handleNativeAnthropicBufferedResponse(
 		contentType = "application/json"
 	}
 	body = reverseToolNamesIfPresent(c, body)
+	if cacheAdj := cacheHitRateAdjustmentFromContext(ctx); cacheAdj > 0 {
+		body = cachehitadj.RewriteAnthropicUsageJSON(body, "usage", cacheAdj)
+	}
 	c.Data(resp.StatusCode, contentType, body)
 
 	return &OpenAIForwardResult{
@@ -347,6 +351,7 @@ func (s *OpenAIGatewayService) handleNativeAnthropicStreamingResponse(
 	// 当前 SSE 事件（空行分界）内最近一条 event: 行的事件名，用于识别
 	// data 载荷非 JSON 或缺 type 的 ping 保活事件。
 	pendingEventName := ""
+	cacheUsageRewriter := &cachehitadj.AnthropicStreamRewriter{}
 
 	scanner := bufio.NewScanner(resp.Body)
 	maxLineSize := defaultMaxLineSize
@@ -494,7 +499,11 @@ func (s *OpenAIGatewayService) handleNativeAnthropicStreamingResponse(
 			}
 
 			if !clientDisconnected {
-				restored := reverseToolNamesIfPresentString(c, line)
+				outLine := line
+				if cacheAdj := cacheHitRateAdjustmentFromContext(ctx); cacheAdj > 0 {
+					outLine = rewriteSSEDataLine(outLine, cacheAdj, cacheUsageRewriter.Rewrite)
+				}
+				restored := reverseToolNamesIfPresentString(c, outLine)
 				if _, err := io.WriteString(w, restored); err != nil {
 					clientDisconnected = true
 					logger.LegacyPrintf("service.gateway", "[CN Anthropic 直通] Client disconnected during streaming, continue draining upstream for usage: account=%d", account.ID)

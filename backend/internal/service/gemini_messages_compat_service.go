@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/cachehitadj"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/gemini"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
@@ -1042,11 +1043,11 @@ func (s *GeminiMessagesCompatService) Forward(ctx context.Context, c *gin.Contex
 			upstreamResponseModelObserverFromContext(c).ObserveGemini(collectedBytes)
 			observeGeminiImageOutputs(c, collectedBytes)
 			claudeResp, usageObj2 := convertGeminiToClaudeMessage(collected, originalModel, collectedBytes, false)
-			c.JSON(http.StatusOK, claudeResp)
 			usage = usageObj2
 			if usageObj != nil && (usageObj.InputTokens > 0 || usageObj.OutputTokens > 0) {
 				usage = usageObj
 			}
+			writeClaudeResponseWithClientUsage(c, claudeResp, usage)
 		} else {
 			usage, err = s.handleNonStreamingResponse(c, resp, originalModel)
 			if err != nil {
@@ -1581,7 +1582,11 @@ func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.
 			b, _ := json.Marshal(collected)
 			upstreamResponseModelObserverFromContext(c).ObserveGemini(b)
 			observeGeminiImageOutputs(c, b)
-			c.Data(http.StatusOK, "application/json", b)
+			clientBody := b
+			if cacheAdj := cacheHitRateAdjustmentFromGin(c); cacheAdj > 0 {
+				clientBody = cachehitadj.RewriteGeminiUsageJSON(b, cacheAdj)
+			}
+			c.Data(http.StatusOK, "application/json", clientBody)
 			usage = usageObj
 		} else {
 			usageResp, err := s.handleNativeNonStreamingResponse(c, resp, isOAuth, account, requestID)
@@ -2147,6 +2152,17 @@ type geminiStreamResult struct {
 	finished         bool // 断开前已收到上游 finishReason
 }
 
+// writeClaudeResponseWithClientUsage 写出 Gemini 转换出的 Claude 响应：usage 不含缓存字段，
+// 比例大于 0 时 input_tokens 取计费口径（修正后）的未缓存输入 token 数。
+func writeClaudeResponseWithClientUsage(c *gin.Context, claudeResp map[string]any, usage *ClaudeUsage) {
+	if cacheAdj := cacheHitRateAdjustmentFromGin(c); cacheAdj > 0 {
+		if usageMap, ok := claudeResp["usage"].(map[string]any); ok {
+			usageMap["input_tokens"] = cachehitadj.Adjust(usage.InputTokens, usage.CacheReadInputTokens, usage.CacheCreationInputTokens, cacheAdj).InputTokens
+		}
+	}
+	c.JSON(http.StatusOK, claudeResp)
+}
+
 func (s *GeminiMessagesCompatService) handleNonStreamingResponse(c *gin.Context, resp *http.Response, originalModel string) (*ClaudeUsage, error) {
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
 	if err != nil {
@@ -2170,7 +2186,7 @@ func (s *GeminiMessagesCompatService) handleNonStreamingResponse(c *gin.Context,
 	}
 
 	claudeResp, usage := convertGeminiToClaudeMessage(geminiResp, originalModel, unwrappedBody, false)
-	c.JSON(http.StatusOK, claudeResp)
+	writeClaudeResponseWithClientUsage(c, claudeResp, usage)
 
 	return usage, nil
 }
@@ -2476,11 +2492,15 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 		stopReason = "tool_use"
 	}
 
+	clientInputTokens := usage.InputTokens
+	if cacheAdj := cacheHitRateAdjustmentFromGin(c); cacheAdj > 0 {
+		clientInputTokens = cachehitadj.Adjust(usage.InputTokens, usage.CacheReadInputTokens, usage.CacheCreationInputTokens, cacheAdj).InputTokens
+	}
 	usageObj := map[string]any{
 		"output_tokens": usage.OutputTokens,
 	}
-	if usage.InputTokens > 0 {
-		usageObj["input_tokens"] = usage.InputTokens
+	if clientInputTokens > 0 {
+		usageObj["input_tokens"] = clientInputTokens
 	}
 	writeSSE(c.Writer, "message_delta", map[string]any{
 		"type": "message_delta",
@@ -2863,10 +2883,15 @@ func (s *GeminiMessagesCompatService) handleNativeNonStreamingResponse(c *gin.Co
 	if contentType == "" {
 		contentType = "application/json"
 	}
-	c.Data(resp.StatusCode, contentType, respBody)
+	rawUsage := extractGeminiUsage(respBody)
+	clientBody := respBody
+	if cacheAdj := cacheHitRateAdjustmentFromGin(c); cacheAdj > 0 {
+		clientBody = cachehitadj.RewriteGeminiUsageJSON(respBody, cacheAdj)
+	}
+	c.Data(resp.StatusCode, contentType, clientBody)
 
-	if u := extractGeminiUsage(respBody); u != nil {
-		return u, nil
+	if rawUsage != nil {
+		return rawUsage, nil
 	}
 	return &ClaudeUsage{}, nil
 }
@@ -2962,10 +2987,15 @@ func (s *GeminiMessagesCompatService) handleNativeStreamingResponse(c *gin.Conte
 
 					if isOAuth {
 						// SSE format requires double newline (\n\n) to separate events
-						_, _ = fmt.Fprintf(c.Writer, "data: %s\n\n", rawToWrite)
+						out := rawToWrite
+						if cacheAdj := cacheHitRateAdjustmentFromGin(c); cacheAdj > 0 {
+							out = string(cachehitadj.RewriteGeminiUsageJSON([]byte(out), cacheAdj))
+						}
+						_, _ = fmt.Fprintf(c.Writer, "data: %s\n\n", out)
 					} else {
 						// Pass-through for AI Studio responses.
-						_, _ = io.WriteString(c.Writer, line)
+						outLine := rewriteSSEDataLine(line, cacheHitRateAdjustmentFromGin(c), cachehitadj.RewriteGeminiUsageJSON)
+						_, _ = io.WriteString(c.Writer, outLine)
 					}
 					flusher.Flush()
 				}

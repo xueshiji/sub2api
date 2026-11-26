@@ -196,6 +196,12 @@ type UsageLog struct {
 	// Cache TTL Override 标记（管理员强制替换了缓存 TTL 计费）
 	CacheTTLOverridden bool
 
+	// 缓存命中率修正快照与扣减 token 数（仅管理端审计使用）
+	CacheHitRateAdjustment   float64
+	CacheReadTokensReduction int
+	// TotalCostBeforeAdjustment 缓存命中率修正生效时按修正前 token 算出的售价口径 total_cost（nil 表示未修正）
+	TotalCostBeforeAdjustment *float64
+
 	// 图片生成字段
 	ImageCount         int
 	ImageSize          *string

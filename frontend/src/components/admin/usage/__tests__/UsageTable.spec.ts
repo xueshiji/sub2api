@@ -933,4 +933,72 @@ describe('admin UsageTable deleted-user badge', () => {
     expect(wrapper.text()).not.toContain('Deleted')
     expect(wrapper.text()).toContain('active@test.com')
   })
+
+  it('shows cache hit adjustment badge and audit tooltip only when reduction is positive', async () => {
+    const adjustedZeroCacheRow = {
+      request_id: 'req-cache-adj-zero',
+      model: 'claude-sonnet-4',
+      billing_mode: 'token',
+      actual_cost: 0.01,
+      total_cost: 0.01,
+      input_cost: 0.009,
+      output_cost: 0.001,
+      rate_multiplier: 1,
+      input_tokens: 1000,
+      output_tokens: 100,
+      cache_creation_tokens: 0,
+      cache_read_tokens: 0,
+      cache_hit_rate_adjustment: 0.05,
+      cache_read_tokens_reduction: 150,
+    }
+    const untriggeredRow = {
+      request_id: 'req-cache-adj-none',
+      model: 'claude-sonnet-4',
+      billing_mode: 'token',
+      actual_cost: 0.01,
+      total_cost: 0.01,
+      input_cost: 0.009,
+      output_cost: 0.001,
+      rate_multiplier: 1,
+      input_tokens: 900,
+      output_tokens: 100,
+      cache_creation_tokens: 0,
+      cache_read_tokens: 100,
+      cache_hit_rate_adjustment: 0.05,
+      cache_read_tokens_reduction: 0,
+    }
+
+    const wrapper = mount(UsageTable, {
+      props: {
+        data: [adjustedZeroCacheRow, untriggeredRow],
+        loading: false,
+        columns: [{ key: 'tokens', label: 'Tokens' }],
+      },
+      global: {
+        stubs: {
+          DataTable: DataTableStub,
+          EmptyState: true,
+          Icon: true,
+          Teleport: true,
+        },
+      },
+    })
+
+    try {
+      const adjustedRowEl = wrapper.get('[data-request-id="req-cache-adj-zero"]')
+      const untriggeredRowEl = wrapper.get('[data-request-id="req-cache-adj-none"]')
+      expect(adjustedRowEl.text()).toContain('-5%')
+      expect(untriggeredRowEl.text()).not.toContain('-5%')
+
+      await adjustedRowEl.find('.group.relative').trigger('mouseenter')
+      await nextTick()
+      const tooltipText = wrapper.get('.fixed').text()
+      expect(tooltipText).toContain('admin.usage.cacheHitAdjustmentAudit')
+      expect(tooltipText).toContain('850')
+      expect(tooltipText).toContain('150')
+      expect(tooltipText).toContain('-150')
+    } finally {
+      wrapper.unmount()
+    }
+  })
 })

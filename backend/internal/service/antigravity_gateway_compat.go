@@ -12,6 +12,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/cachehitadj"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
@@ -621,7 +622,7 @@ func (s *AntigravityGatewayService) handleChatCompletionsNonStreamingFromAntigra
 		return nil, s.writeAntigravityCompatError(c, http.StatusBadGateway, "upstream_error", "Failed to parse upstream response")
 	}
 	responsesResponse := apicompat.AnthropicToResponsesResponse(&anthropicResponse)
-	c.JSON(http.StatusOK, apicompat.ResponsesToChatCompletions(responsesResponse, originalModel))
+	writeJSONWithUsageRewrite(c, http.StatusOK, apicompat.ResponsesToChatCompletions(responsesResponse, originalModel), cacheHitRateAdjustmentFromGin(c), cachehitadj.RewriteOpenAIUsageJSON)
 	return result, nil
 }
 
@@ -639,7 +640,7 @@ func (s *AntigravityGatewayService) handleResponsesNonStreamingFromAntigravity(
 	if json.Unmarshal(claudeResponse, &anthropicResponse) != nil {
 		return nil, s.writeAntigravityCompatError(c, http.StatusBadGateway, "upstream_error", "Failed to parse upstream response")
 	}
-	c.JSON(http.StatusOK, apicompat.AnthropicToResponsesResponse(&anthropicResponse))
+	writeJSONWithUsageRewrite(c, http.StatusOK, apicompat.AnthropicToResponsesResponse(&anthropicResponse), cacheHitRateAdjustmentFromGin(c), cachehitadj.RewriteOpenAIUsageJSON)
 	return result, nil
 }
 

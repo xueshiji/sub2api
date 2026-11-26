@@ -657,6 +657,8 @@ export interface AdminGroup extends Group {
   profit_control_enabled: boolean
   profit_min_margin: number
   profit_safety_buffer: number
+  // 缓存命中率修正比例（仅管理员可见，0~0.10 小数存储）
+  cache_hit_rate_adjustment: number
 
   // 模型路由配置（仅管理员可见，内部信息）
   model_routing: Record<string, number[]> | null
@@ -862,6 +864,7 @@ export interface CreateGroupRequest {
   profit_control_enabled?: boolean
   profit_min_margin?: number
   profit_safety_buffer?: number
+  cache_hit_rate_adjustment?: number
   claude_code_only?: boolean
   fallback_group_id?: number | null
   fallback_group_id_on_invalid_request?: number | null
@@ -936,6 +939,7 @@ export interface UpdateGroupRequest {
   profit_control_enabled?: boolean
   profit_min_margin?: number
   profit_safety_buffer?: number
+  cache_hit_rate_adjustment?: number
   claude_code_only?: boolean
   fallback_group_id?: number | null
   fallback_group_id_on_invalid_request?: number | null
@@ -1928,6 +1932,9 @@ export interface AdminUsageLog extends UsageLog {
   account_rate_multiplier?: number | null
   // 自定义定价规则计算的账号统计费用（nil 时使用 total_cost * multiplier）
   account_stats_cost?: number | null
+  // 缓存命中率修正审计（仅管理员可见）
+  cache_hit_rate_adjustment?: number
+  cache_read_tokens_reduction?: number
 
   // 渠道 ID 和计费等级（仅管理员可见）
   channel_id?: number | null

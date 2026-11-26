@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/cachehitadj"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/gin-gonic/gin"
@@ -308,6 +309,9 @@ func (s *OpenAIGatewayService) handleResponsesBufferedFromNativeAnthropic(
 		if err != nil {
 			return nil, fmt.Errorf("restore responses client tools: %w", err)
 		}
+		if cacheAdj := cacheHitRateAdjustmentFromGin(c); cacheAdj > 0 {
+			respBytes = cachehitadj.RewriteOpenAIUsageJSON(respBytes, cacheAdj)
+		}
 		c.Data(http.StatusOK, "application/json; charset=utf-8", respBytes)
 	} else {
 		c.JSON(http.StatusOK, responsesResp)
@@ -444,6 +448,9 @@ func (s *OpenAIGatewayService) handleResponsesStreamingFromNativeAnthropic(
 				continue
 			}
 			for _, restored := range payloads {
+				if cacheAdj := cacheHitRateAdjustmentFromGin(c); cacheAdj > 0 {
+					restored = cachehitadj.RewriteOpenAIUsageJSON(restored, cacheAdj)
+				}
 				eventType := gjson.GetBytes(restored, "type").String()
 				if _, err := fmt.Fprintf(c.Writer, "event: %s\ndata: %s\n\n", eventType, restored); err != nil {
 					clientDisconnected = true
@@ -534,6 +541,9 @@ func (s *OpenAIGatewayService) handleResponsesStreamingFromNativeAnthropic(
 				continue
 			}
 			for _, restored := range payloads {
+				if cacheAdj := cacheHitRateAdjustmentFromGin(c); cacheAdj > 0 {
+					restored = cachehitadj.RewriteOpenAIUsageJSON(restored, cacheAdj)
+				}
 				eventType := gjson.GetBytes(restored, "type").String()
 				if _, err := fmt.Fprintf(c.Writer, "event: %s\ndata: %s\n\n", eventType, restored); err != nil {
 					clientDisconnected = true

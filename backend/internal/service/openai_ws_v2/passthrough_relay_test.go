@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/cachehitadj"
 	coderws "github.com/coder/websocket"
 	"github.com/stretchr/testify/require"
 )
@@ -1636,4 +1637,45 @@ func TestRelay_IsFirstTokenEventDecidesEveryTurnFirstToken(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("relay did not stop after cancellation")
 	}
+}
+
+func TestRelay_RewriteClientPayloadPreservesRawUsageForBilling(t *testing.T) {
+	t.Parallel()
+
+	clientConn := newPassthroughTestFrameConn(nil, false)
+	upstreamConn := newPassthroughTestFrameConn([]passthroughTestFrame{
+		{
+			msgType: coderws.MessageText,
+			payload: []byte(`{"type":"response.completed","response":{"id":"resp_adj_1","usage":{"input_tokens":1000,"output_tokens":50,"input_tokens_details":{"cached_tokens":800}}}}`),
+		},
+	}, true)
+
+	firstPayload := []byte(`{"type":"response.create","model":"gpt-5.3-codex","input":[{"type":"input_text","text":"hello"}]}`)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	var observedTurnUsage *RelayTurnResult
+	result, relayExit := Relay(ctx, clientConn, upstreamConn, firstPayload, RelayOptions{
+		OnTurnComplete: func(turn RelayTurnResult) {
+			cp := turn
+			observedTurnUsage = &cp
+		},
+		RewriteClientPayload: func(msgType coderws.MessageType, payload []byte) []byte {
+			if msgType != coderws.MessageText {
+				return payload
+			}
+			return cachehitadj.RewriteOpenAIUsageJSON(payload, 0.05)
+		},
+	})
+	require.Nil(t, relayExit)
+	require.Equal(t, 1000, result.Usage.InputTokens)
+	require.Equal(t, 800, result.Usage.CacheReadInputTokens)
+	require.NotNil(t, observedTurnUsage)
+	require.Equal(t, 800, observedTurnUsage.Usage.CacheReadInputTokens)
+
+	writes := clientConn.Writes()
+	require.Len(t, writes, 1)
+	clientPayload := string(writes[0].payload)
+	require.Contains(t, clientPayload, `"input_tokens":1000`)
+	require.Contains(t, clientPayload, `"cached_tokens":750`)
 }

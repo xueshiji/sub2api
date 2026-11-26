@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/cachehitadj"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/gin-gonic/gin"
@@ -161,12 +162,18 @@ func (s *OpenAIGatewayService) ForwardEmbeddings(
 		return nil, fmt.Errorf("read upstream body: %w", err)
 	}
 
+	// 计费解析取原始 usage；客户端响应的 cached_tokens 按缓存命中率修正改写。
+	usage := extractOpenAIEmbeddingsUsage(respBody)
+	if cacheAdj := cacheHitRateAdjustmentFromGin(c); cacheAdj > 0 {
+		respBody = cachehitadj.RewriteOpenAIUsageJSONWithRule(respBody, cachehitadj.OpenAIUsageRuleEmbeddings, cacheAdj)
+	}
+
 	writeOpenAIEmbeddingsUpstreamResponse(c, resp, respBody, s.responseHeaderFilter)
 
 	return &OpenAIForwardResult{
 		RequestID:       firstNonEmptyString(resp.Header.Get("x-request-id"), resp.Header.Get("request-id")),
 		UpstreamHeaders: resp.Header,
-		Usage:           extractOpenAIEmbeddingsUsage(respBody),
+		Usage:           usage,
 		Model:           originalModel,
 		BillingModel:    billingModel,
 		UpstreamModel:   upstreamModel,

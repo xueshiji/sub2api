@@ -524,6 +524,14 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		return nil, err
 	}
 
+	cacheHitRateAdjustment := 0.0
+	if input.CacheHitRateAdjustment != nil {
+		if err := ValidateCacheHitRateAdjustment(*input.CacheHitRateAdjustment); err != nil {
+			return nil, infraerrors.BadRequest("INVALID_CACHE_HIT_RATE_ADJUSTMENT", err.Error())
+		}
+		cacheHitRateAdjustment = NormalizeCacheHitRateAdjustment(*input.CacheHitRateAdjustment)
+	}
+
 	// 校验降级分组
 	if input.FallbackGroupID != nil {
 		if err := s.validateFallbackGroup(ctx, 0, *input.FallbackGroupID); err != nil {
@@ -625,6 +633,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		ProfitControlEnabled:            profitControlEnabled,
 		ProfitMinMargin:                 profitMinMargin,
 		ProfitSafetyBuffer:              profitSafetyBuffer,
+		CacheHitRateAdjustment:          cacheHitRateAdjustment,
 		ImagePrice1K:                    imagePrice1K,
 		ImagePrice2K:                    imagePrice2K,
 		ImagePrice4K:                    imagePrice4K,
@@ -991,6 +1000,12 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	group.ProfitControlEnabled, group.ProfitMinMargin, group.ProfitSafetyBuffer = NormalizeProfitControlConfig(group.Platform, group.ProfitControlEnabled, group.ProfitMinMargin, group.ProfitSafetyBuffer)
 	if err := ValidateProfitControlConfig(group.Platform, group.ProfitControlEnabled, group.ProfitMinMargin, group.ProfitSafetyBuffer); err != nil {
 		return nil, err
+	}
+	if input.CacheHitRateAdjustment != nil {
+		if err := ValidateCacheHitRateAdjustment(*input.CacheHitRateAdjustment); err != nil {
+			return nil, infraerrors.BadRequest("INVALID_CACHE_HIT_RATE_ADJUSTMENT", err.Error())
+		}
+		group.CacheHitRateAdjustment = NormalizeCacheHitRateAdjustment(*input.CacheHitRateAdjustment)
 	}
 	if input.ImagePrice1K != nil {
 		group.ImagePrice1K = normalizePrice(input.ImagePrice1K)

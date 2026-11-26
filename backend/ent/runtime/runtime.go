@@ -1253,6 +1253,10 @@ func init() {
 	groupDescProfitSafetyBuffer := groupFields[70].Descriptor()
 	// group.DefaultProfitSafetyBuffer holds the default value on creation for the profit_safety_buffer field.
 	group.DefaultProfitSafetyBuffer = groupDescProfitSafetyBuffer.Default.(float64)
+	// groupDescCacheHitRateAdjustment is the schema descriptor for cache_hit_rate_adjustment field.
+	groupDescCacheHitRateAdjustment := groupFields[71].Descriptor()
+	// group.DefaultCacheHitRateAdjustment holds the default value on creation for the cache_hit_rate_adjustment field.
+	group.DefaultCacheHitRateAdjustment = groupDescCacheHitRateAdjustment.Default.(float64)
 	idempotencyrecordMixin := schema.IdempotencyRecord{}.Mixin()
 	idempotencyrecordMixinFields0 := idempotencyrecordMixin[0].Fields()
 	_ = idempotencyrecordMixinFields0
@@ -2174,8 +2178,16 @@ func init() {
 	usagelogDescCacheTTLOverridden := usagelogFields[47].Descriptor()
 	// usagelog.DefaultCacheTTLOverridden holds the default value on creation for the cache_ttl_overridden field.
 	usagelog.DefaultCacheTTLOverridden = usagelogDescCacheTTLOverridden.Default.(bool)
+	// usagelogDescCacheHitRateAdjustment is the schema descriptor for cache_hit_rate_adjustment field.
+	usagelogDescCacheHitRateAdjustment := usagelogFields[48].Descriptor()
+	// usagelog.DefaultCacheHitRateAdjustment holds the default value on creation for the cache_hit_rate_adjustment field.
+	usagelog.DefaultCacheHitRateAdjustment = usagelogDescCacheHitRateAdjustment.Default.(float64)
+	// usagelogDescCacheReadTokensReduction is the schema descriptor for cache_read_tokens_reduction field.
+	usagelogDescCacheReadTokensReduction := usagelogFields[49].Descriptor()
+	// usagelog.DefaultCacheReadTokensReduction holds the default value on creation for the cache_read_tokens_reduction field.
+	usagelog.DefaultCacheReadTokensReduction = usagelogDescCacheReadTokensReduction.Default.(int)
 	// usagelogDescCreatedAt is the schema descriptor for created_at field.
-	usagelogDescCreatedAt := usagelogFields[48].Descriptor()
+	usagelogDescCreatedAt := usagelogFields[51].Descriptor()
 	// usagelog.DefaultCreatedAt holds the default value on creation for the created_at field.
 	usagelog.DefaultCreatedAt = usagelogDescCreatedAt.Default.(func() time.Time)
 	userMixin := schema.User{}.Mixin()

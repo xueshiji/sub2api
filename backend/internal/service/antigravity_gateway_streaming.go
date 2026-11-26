@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/cachehitadj"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/gin-gonic/gin"
 )
@@ -298,6 +299,9 @@ func (s *AntigravityGatewayService) handleGeminiStreamingResponse(c *gin.Context
 					firstTokenMs = &ms
 				}
 
+				if cacheAdj := cacheHitRateAdjustmentFromGin(c); cacheAdj > 0 {
+					payload = string(cachehitadj.RewriteGeminiUsageJSON([]byte(payload), cacheAdj))
+				}
 				cw.Fprintf("data: %s\n\n", payload)
 				continue
 			}
@@ -522,6 +526,9 @@ returnResponse:
 	respBody, err := json.Marshal(finalResponse)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal response: %w", err)
+	}
+	if cacheAdj := cacheHitRateAdjustmentFromGin(c); cacheAdj > 0 {
+		respBody = cachehitadj.RewriteGeminiUsageJSON(respBody, cacheAdj)
 	}
 	c.Data(http.StatusOK, "application/json", respBody)
 
@@ -980,6 +987,9 @@ func (s *AntigravityGatewayService) handleClaudeStreamToNonStreaming(c *gin.Cont
 
 		return nil, s.writeClaudeError(c, http.StatusBadGateway, errType, errMsg)
 	}
+	if cacheAdj := cacheHitRateAdjustmentFromGin(c); cacheAdj > 0 {
+		claudeResp = cachehitadj.RewriteAnthropicUsageJSON(claudeResp, "usage", cacheAdj)
+	}
 	c.Data(http.StatusOK, "application/json", claudeResp)
 	return streamRes, nil
 }
@@ -998,6 +1008,7 @@ func (s *AntigravityGatewayService) handleClaudeStreamingResponse(c *gin.Context
 	}
 
 	processor := antigravity.NewStreamingProcessor(originalModel)
+	cacheUsageRewriter := &cachehitadj.AnthropicStreamRewriter{}
 	var firstTokenMs *int
 	// 使用 Scanner 并限制单行大小，避免 ReadString 无上限导致 OOM
 	scanner := bufio.NewScanner(resp.Body)
@@ -1118,6 +1129,9 @@ func (s *AntigravityGatewayService) handleClaudeStreamingResponse(c *gin.Context
 				// 上游完成，发送结束事件
 				finalEvents, agUsage := processor.Finish()
 				if len(finalEvents) > 0 {
+					if cacheAdj := cacheHitRateAdjustmentFromGin(c); cacheAdj > 0 {
+						finalEvents = []byte(rewriteSSEBlock(string(finalEvents), cacheAdj, cacheUsageRewriter.Rewrite))
+					}
 					cw.Write(finalEvents)
 				} else if !processor.MessageStartSent() && !cw.Disconnected() {
 					// 整个流未收到任何可解析的上游数据（全部 SSE 行均无法被 JSON 解析），
@@ -1153,6 +1167,9 @@ func (s *AntigravityGatewayService) handleClaudeStreamingResponse(c *gin.Context
 				if firstTokenMs == nil {
 					ms := int(time.Since(startTime).Milliseconds())
 					firstTokenMs = &ms
+				}
+				if cacheAdj := cacheHitRateAdjustmentFromGin(c); cacheAdj > 0 {
+					claudeEvents = []byte(rewriteSSEBlock(string(claudeEvents), cacheAdj, cacheUsageRewriter.Rewrite))
 				}
 				cw.Write(claudeEvents)
 			}

@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/cachehitadj"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/gin-gonic/gin"
@@ -2232,6 +2233,9 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 				firstTokenMs = &ms
 			}
 			s.parseSSEUsageBytesWithType(dataBytes, eventType, usage)
+			if cacheAdj := cacheHitRateAdjustmentFromContext(ctx); cacheAdj > 0 {
+				line = rewriteSSEDataLine(line, cacheAdj, cachehitadj.RewriteOpenAIUsageJSON)
+			}
 		}
 		if line == "" {
 			pendingSSEEventType = ""
@@ -2407,6 +2411,9 @@ func (s *OpenAIGatewayService) handleNonStreamingResponsePassthrough(
 	if err != nil {
 		return nil, fmt.Errorf("restore OpenAI Responses client tools: %w", err)
 	}
+	if cacheAdj := cacheHitRateAdjustmentFromContext(ctx); cacheAdj > 0 {
+		body = cachehitadj.RewriteOpenAIUsageJSON(body, cacheAdj)
+	}
 	if !writeOpenAICompactSSEBridge(c, resp.StatusCode, body) {
 		c.Data(resp.StatusCode, contentType, body)
 	}
@@ -2487,6 +2494,13 @@ func (s *OpenAIGatewayService) handlePassthroughSSEToJSON(resp *http.Response, c
 		contentType = resp.Header.Get("Content-Type")
 		if contentType == "" {
 			contentType = "text/event-stream"
+		}
+	}
+	if cacheAdj := cacheHitRateAdjustmentFromGin(c); cacheAdj > 0 {
+		if ok {
+			body = cachehitadj.RewriteOpenAIUsageJSON(body, cacheAdj)
+		} else {
+			body = []byte(rewriteSSEBlock(string(body), cacheAdj, cachehitadj.RewriteOpenAIUsageJSON))
 		}
 	}
 	if !writeOpenAICompactSSEBridge(c, resp.StatusCode, body) {

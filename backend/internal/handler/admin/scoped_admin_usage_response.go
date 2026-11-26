@@ -78,6 +78,8 @@ func scopedAdminUsageLogResponse(record *service.UsageLog) gin.H {
 		"billing_tier":                 usage.BillingTier,
 		"account_rate_multiplier":      usage.AccountRateMultiplier,
 		"account_stats_cost":           usage.AccountStatsCost,
+		"cache_hit_rate_adjustment":    usage.CacheHitRateAdjustment,
+		"cache_read_tokens_reduction":  usage.CacheReadTokensReduction,
 	}
 }
 

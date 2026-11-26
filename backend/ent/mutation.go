@@ -22189,6 +22189,8 @@ type GroupMutation struct {
 	addprofit_min_margin                    *float64
 	profit_safety_buffer                    *float64
 	addprofit_safety_buffer                 *float64
+	cache_hit_rate_adjustment               *float64
+	addcache_hit_rate_adjustment            *float64
 	clearedFields                           map[string]struct{}
 	api_keys                                map[int64]struct{}
 	removedapi_keys                         map[int64]struct{}
@@ -25998,6 +26000,62 @@ func (m *GroupMutation) ResetProfitSafetyBuffer() {
 	m.addprofit_safety_buffer = nil
 }
 
+// SetCacheHitRateAdjustment sets the "cache_hit_rate_adjustment" field.
+func (m *GroupMutation) SetCacheHitRateAdjustment(f float64) {
+	m.cache_hit_rate_adjustment = &f
+	m.addcache_hit_rate_adjustment = nil
+}
+
+// CacheHitRateAdjustment returns the value of the "cache_hit_rate_adjustment" field in the mutation.
+func (m *GroupMutation) CacheHitRateAdjustment() (r float64, exists bool) {
+	v := m.cache_hit_rate_adjustment
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCacheHitRateAdjustment returns the old "cache_hit_rate_adjustment" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldCacheHitRateAdjustment(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCacheHitRateAdjustment is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCacheHitRateAdjustment requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCacheHitRateAdjustment: %w", err)
+	}
+	return oldValue.CacheHitRateAdjustment, nil
+}
+
+// AddCacheHitRateAdjustment adds f to the "cache_hit_rate_adjustment" field.
+func (m *GroupMutation) AddCacheHitRateAdjustment(f float64) {
+	if m.addcache_hit_rate_adjustment != nil {
+		*m.addcache_hit_rate_adjustment += f
+	} else {
+		m.addcache_hit_rate_adjustment = &f
+	}
+}
+
+// AddedCacheHitRateAdjustment returns the value that was added to the "cache_hit_rate_adjustment" field in this mutation.
+func (m *GroupMutation) AddedCacheHitRateAdjustment() (r float64, exists bool) {
+	v := m.addcache_hit_rate_adjustment
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetCacheHitRateAdjustment resets all changes to the "cache_hit_rate_adjustment" field.
+func (m *GroupMutation) ResetCacheHitRateAdjustment() {
+	m.cache_hit_rate_adjustment = nil
+	m.addcache_hit_rate_adjustment = nil
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by ids.
 func (m *GroupMutation) AddAPIKeyIDs(ids ...int64) {
 	if m.api_keys == nil {
@@ -26356,7 +26414,7 @@ func (m *GroupMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GroupMutation) Fields() []string {
-	fields := make([]string, 0, 74)
+	fields := make([]string, 0, 75)
 	if m.created_at != nil {
 		fields = append(fields, group.FieldCreatedAt)
 	}
@@ -26579,6 +26637,9 @@ func (m *GroupMutation) Fields() []string {
 	if m.profit_safety_buffer != nil {
 		fields = append(fields, group.FieldProfitSafetyBuffer)
 	}
+	if m.cache_hit_rate_adjustment != nil {
+		fields = append(fields, group.FieldCacheHitRateAdjustment)
+	}
 	return fields
 }
 
@@ -26735,6 +26796,8 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.ProfitMinMargin()
 	case group.FieldProfitSafetyBuffer:
 		return m.ProfitSafetyBuffer()
+	case group.FieldCacheHitRateAdjustment:
+		return m.CacheHitRateAdjustment()
 	}
 	return nil, false
 }
@@ -26892,6 +26955,8 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldProfitMinMargin(ctx)
 	case group.FieldProfitSafetyBuffer:
 		return m.OldProfitSafetyBuffer(ctx)
+	case group.FieldCacheHitRateAdjustment:
+		return m.OldCacheHitRateAdjustment(ctx)
 	}
 	return nil, fmt.Errorf("unknown Group field %s", name)
 }
@@ -27419,6 +27484,13 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetProfitSafetyBuffer(v)
 		return nil
+	case group.FieldCacheHitRateAdjustment:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCacheHitRateAdjustment(v)
+		return nil
 	}
 	return fmt.Errorf("unknown Group field %s", name)
 }
@@ -27520,6 +27592,9 @@ func (m *GroupMutation) AddedFields() []string {
 	if m.addprofit_safety_buffer != nil {
 		fields = append(fields, group.FieldProfitSafetyBuffer)
 	}
+	if m.addcache_hit_rate_adjustment != nil {
+		fields = append(fields, group.FieldCacheHitRateAdjustment)
+	}
 	return fields
 }
 
@@ -27590,6 +27665,8 @@ func (m *GroupMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedProfitMinMargin()
 	case group.FieldProfitSafetyBuffer:
 		return m.AddedProfitSafetyBuffer()
+	case group.FieldCacheHitRateAdjustment:
+		return m.AddedCacheHitRateAdjustment()
 	}
 	return nil, false
 }
@@ -27815,6 +27892,13 @@ func (m *GroupMutation) AddField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.AddProfitSafetyBuffer(v)
+		return nil
+	case group.FieldCacheHitRateAdjustment:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddCacheHitRateAdjustment(v)
 		return nil
 	}
 	return fmt.Errorf("unknown Group numeric field %s", name)
@@ -28223,6 +28307,9 @@ func (m *GroupMutation) ResetField(name string) error {
 		return nil
 	case group.FieldProfitSafetyBuffer:
 		m.ResetProfitSafetyBuffer()
+		return nil
+	case group.FieldCacheHitRateAdjustment:
+		m.ResetCacheHitRateAdjustment()
 		return nil
 	}
 	return fmt.Errorf("unknown Group field %s", name)
@@ -45257,90 +45344,96 @@ func (m *UsageCleanupTaskMutation) ResetEdge(name string) error {
 // UsageLogMutation represents an operation that mutates the UsageLog nodes in the graph.
 type UsageLogMutation struct {
 	config
-	op                           Op
-	typ                          string
-	id                           *int64
-	request_id                   *string
-	model                        *string
-	requested_model              *string
-	upstream_model               *string
-	upstream_response_model      *string
-	upstream_model_mismatch      *bool
-	channel_id                   *int64
-	addchannel_id                *int64
-	model_mapping_chain          *string
-	billing_tier                 *string
-	billing_mode                 *string
-	input_tokens                 *int
-	addinput_tokens              *int
-	output_tokens                *int
-	addoutput_tokens             *int
-	cache_creation_tokens        *int
-	addcache_creation_tokens     *int
-	cache_read_tokens            *int
-	addcache_read_tokens         *int
-	cache_creation_5m_tokens     *int
-	addcache_creation_5m_tokens  *int
-	cache_creation_1h_tokens     *int
-	addcache_creation_1h_tokens  *int
-	cache_creation_30m_tokens    *int
-	addcache_creation_30m_tokens *int
-	cache_creation_12h_tokens    *int
-	addcache_creation_12h_tokens *int
-	input_cost                   *float64
-	addinput_cost                *float64
-	output_cost                  *float64
-	addoutput_cost               *float64
-	cache_creation_cost          *float64
-	addcache_creation_cost       *float64
-	cache_read_cost              *float64
-	addcache_read_cost           *float64
-	total_cost                   *float64
-	addtotal_cost                *float64
-	actual_cost                  *float64
-	addactual_cost               *float64
-	rate_multiplier              *float64
-	addrate_multiplier           *float64
-	long_context_billing_applied *bool
-	account_rate_multiplier      *float64
-	addaccount_rate_multiplier   *float64
-	billing_type                 *int8
-	addbilling_type              *int8
-	stream                       *bool
-	duration_ms                  *int
-	addduration_ms               *int
-	first_token_ms               *int
-	addfirst_token_ms            *int
-	user_agent                   *string
-	ip_address                   *string
-	image_count                  *int
-	addimage_count               *int
-	image_size                   *string
-	image_input_size             *string
-	image_output_size            *string
-	image_size_source            *string
-	image_size_breakdown         *map[string]int
-	video_count                  *int
-	addvideo_count               *int
-	video_resolution             *string
-	video_duration_seconds       *int
-	addvideo_duration_seconds    *int
-	cache_ttl_overridden         *bool
-	created_at                   *time.Time
-	clearedFields                map[string]struct{}
-	user                         *int64
-	cleareduser                  bool
-	api_key                      *int64
-	clearedapi_key               bool
-	account                      *int64
-	clearedaccount               bool
-	group                        *int64
-	clearedgroup                 bool
-	subscription                 *int64
-	clearedsubscription          bool
-	done                         bool
-	oldValue                     func(context.Context) (*UsageLog, error)
-	predicates                   []predicate.UsageLog
+	op                              Op
+	typ                             string
+	id                              *int64
+	request_id                      *string
+	model                           *string
+	requested_model                 *string
+	upstream_model                  *string
+	upstream_response_model         *string
+	upstream_model_mismatch         *bool
+	channel_id                      *int64
+	addchannel_id                   *int64
+	model_mapping_chain             *string
+	billing_tier                    *string
+	billing_mode                    *string
+	input_tokens                    *int
+	addinput_tokens                 *int
+	output_tokens                   *int
+	addoutput_tokens                *int
+	cache_creation_tokens           *int
+	addcache_creation_tokens        *int
+	cache_read_tokens               *int
+	addcache_read_tokens            *int
+	cache_creation_5m_tokens        *int
+	addcache_creation_5m_tokens     *int
+	cache_creation_1h_tokens        *int
+	addcache_creation_1h_tokens     *int
+	cache_creation_30m_tokens       *int
+	addcache_creation_30m_tokens    *int
+	cache_creation_12h_tokens       *int
+	addcache_creation_12h_tokens    *int
+	input_cost                      *float64
+	addinput_cost                   *float64
+	output_cost                     *float64
+	addoutput_cost                  *float64
+	cache_creation_cost             *float64
+	addcache_creation_cost          *float64
+	cache_read_cost                 *float64
+	addcache_read_cost              *float64
+	total_cost                      *float64
+	addtotal_cost                   *float64
+	actual_cost                     *float64
+	addactual_cost                  *float64
+	rate_multiplier                 *float64
+	addrate_multiplier              *float64
+	long_context_billing_applied    *bool
+	account_rate_multiplier         *float64
+	addaccount_rate_multiplier      *float64
+	billing_type                    *int8
+	addbilling_type                 *int8
+	stream                          *bool
+	duration_ms                     *int
+	addduration_ms                  *int
+	first_token_ms                  *int
+	addfirst_token_ms               *int
+	user_agent                      *string
+	ip_address                      *string
+	image_count                     *int
+	addimage_count                  *int
+	image_size                      *string
+	image_input_size                *string
+	image_output_size               *string
+	image_size_source               *string
+	image_size_breakdown            *map[string]int
+	video_count                     *int
+	addvideo_count                  *int
+	video_resolution                *string
+	video_duration_seconds          *int
+	addvideo_duration_seconds       *int
+	cache_ttl_overridden            *bool
+	cache_hit_rate_adjustment       *float64
+	addcache_hit_rate_adjustment    *float64
+	cache_read_tokens_reduction     *int
+	addcache_read_tokens_reduction  *int
+	total_cost_before_adjustment    *float64
+	addtotal_cost_before_adjustment *float64
+	created_at                      *time.Time
+	clearedFields                   map[string]struct{}
+	user                            *int64
+	cleareduser                     bool
+	api_key                         *int64
+	clearedapi_key                  bool
+	account                         *int64
+	clearedaccount                  bool
+	group                           *int64
+	clearedgroup                    bool
+	subscription                    *int64
+	clearedsubscription             bool
+	done                            bool
+	oldValue                        func(context.Context) (*UsageLog, error)
+	predicates                      []predicate.UsageLog
 }
 
 var _ ent.Mutation = (*UsageLogMutation)(nil)
@@ -47920,6 +48013,188 @@ func (m *UsageLogMutation) ResetCacheTTLOverridden() {
 	m.cache_ttl_overridden = nil
 }
 
+// SetCacheHitRateAdjustment sets the "cache_hit_rate_adjustment" field.
+func (m *UsageLogMutation) SetCacheHitRateAdjustment(f float64) {
+	m.cache_hit_rate_adjustment = &f
+	m.addcache_hit_rate_adjustment = nil
+}
+
+// CacheHitRateAdjustment returns the value of the "cache_hit_rate_adjustment" field in the mutation.
+func (m *UsageLogMutation) CacheHitRateAdjustment() (r float64, exists bool) {
+	v := m.cache_hit_rate_adjustment
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCacheHitRateAdjustment returns the old "cache_hit_rate_adjustment" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldCacheHitRateAdjustment(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCacheHitRateAdjustment is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCacheHitRateAdjustment requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCacheHitRateAdjustment: %w", err)
+	}
+	return oldValue.CacheHitRateAdjustment, nil
+}
+
+// AddCacheHitRateAdjustment adds f to the "cache_hit_rate_adjustment" field.
+func (m *UsageLogMutation) AddCacheHitRateAdjustment(f float64) {
+	if m.addcache_hit_rate_adjustment != nil {
+		*m.addcache_hit_rate_adjustment += f
+	} else {
+		m.addcache_hit_rate_adjustment = &f
+	}
+}
+
+// AddedCacheHitRateAdjustment returns the value that was added to the "cache_hit_rate_adjustment" field in this mutation.
+func (m *UsageLogMutation) AddedCacheHitRateAdjustment() (r float64, exists bool) {
+	v := m.addcache_hit_rate_adjustment
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetCacheHitRateAdjustment resets all changes to the "cache_hit_rate_adjustment" field.
+func (m *UsageLogMutation) ResetCacheHitRateAdjustment() {
+	m.cache_hit_rate_adjustment = nil
+	m.addcache_hit_rate_adjustment = nil
+}
+
+// SetCacheReadTokensReduction sets the "cache_read_tokens_reduction" field.
+func (m *UsageLogMutation) SetCacheReadTokensReduction(i int) {
+	m.cache_read_tokens_reduction = &i
+	m.addcache_read_tokens_reduction = nil
+}
+
+// CacheReadTokensReduction returns the value of the "cache_read_tokens_reduction" field in the mutation.
+func (m *UsageLogMutation) CacheReadTokensReduction() (r int, exists bool) {
+	v := m.cache_read_tokens_reduction
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCacheReadTokensReduction returns the old "cache_read_tokens_reduction" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldCacheReadTokensReduction(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCacheReadTokensReduction is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCacheReadTokensReduction requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCacheReadTokensReduction: %w", err)
+	}
+	return oldValue.CacheReadTokensReduction, nil
+}
+
+// AddCacheReadTokensReduction adds i to the "cache_read_tokens_reduction" field.
+func (m *UsageLogMutation) AddCacheReadTokensReduction(i int) {
+	if m.addcache_read_tokens_reduction != nil {
+		*m.addcache_read_tokens_reduction += i
+	} else {
+		m.addcache_read_tokens_reduction = &i
+	}
+}
+
+// AddedCacheReadTokensReduction returns the value that was added to the "cache_read_tokens_reduction" field in this mutation.
+func (m *UsageLogMutation) AddedCacheReadTokensReduction() (r int, exists bool) {
+	v := m.addcache_read_tokens_reduction
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetCacheReadTokensReduction resets all changes to the "cache_read_tokens_reduction" field.
+func (m *UsageLogMutation) ResetCacheReadTokensReduction() {
+	m.cache_read_tokens_reduction = nil
+	m.addcache_read_tokens_reduction = nil
+}
+
+// SetTotalCostBeforeAdjustment sets the "total_cost_before_adjustment" field.
+func (m *UsageLogMutation) SetTotalCostBeforeAdjustment(f float64) {
+	m.total_cost_before_adjustment = &f
+	m.addtotal_cost_before_adjustment = nil
+}
+
+// TotalCostBeforeAdjustment returns the value of the "total_cost_before_adjustment" field in the mutation.
+func (m *UsageLogMutation) TotalCostBeforeAdjustment() (r float64, exists bool) {
+	v := m.total_cost_before_adjustment
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTotalCostBeforeAdjustment returns the old "total_cost_before_adjustment" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldTotalCostBeforeAdjustment(ctx context.Context) (v *float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTotalCostBeforeAdjustment is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTotalCostBeforeAdjustment requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTotalCostBeforeAdjustment: %w", err)
+	}
+	return oldValue.TotalCostBeforeAdjustment, nil
+}
+
+// AddTotalCostBeforeAdjustment adds f to the "total_cost_before_adjustment" field.
+func (m *UsageLogMutation) AddTotalCostBeforeAdjustment(f float64) {
+	if m.addtotal_cost_before_adjustment != nil {
+		*m.addtotal_cost_before_adjustment += f
+	} else {
+		m.addtotal_cost_before_adjustment = &f
+	}
+}
+
+// AddedTotalCostBeforeAdjustment returns the value that was added to the "total_cost_before_adjustment" field in this mutation.
+func (m *UsageLogMutation) AddedTotalCostBeforeAdjustment() (r float64, exists bool) {
+	v := m.addtotal_cost_before_adjustment
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearTotalCostBeforeAdjustment clears the value of the "total_cost_before_adjustment" field.
+func (m *UsageLogMutation) ClearTotalCostBeforeAdjustment() {
+	m.total_cost_before_adjustment = nil
+	m.addtotal_cost_before_adjustment = nil
+	m.clearedFields[usagelog.FieldTotalCostBeforeAdjustment] = struct{}{}
+}
+
+// TotalCostBeforeAdjustmentCleared returns if the "total_cost_before_adjustment" field was cleared in this mutation.
+func (m *UsageLogMutation) TotalCostBeforeAdjustmentCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldTotalCostBeforeAdjustment]
+	return ok
+}
+
+// ResetTotalCostBeforeAdjustment resets all changes to the "total_cost_before_adjustment" field.
+func (m *UsageLogMutation) ResetTotalCostBeforeAdjustment() {
+	m.total_cost_before_adjustment = nil
+	m.addtotal_cost_before_adjustment = nil
+	delete(m.clearedFields, usagelog.FieldTotalCostBeforeAdjustment)
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (m *UsageLogMutation) SetCreatedAt(t time.Time) {
 	m.created_at = &t
@@ -48125,7 +48400,7 @@ func (m *UsageLogMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *UsageLogMutation) Fields() []string {
-	fields := make([]string, 0, 49)
+	fields := make([]string, 0, 52)
 	if m.user != nil {
 		fields = append(fields, usagelog.FieldUserID)
 	}
@@ -48270,6 +48545,15 @@ func (m *UsageLogMutation) Fields() []string {
 	if m.cache_ttl_overridden != nil {
 		fields = append(fields, usagelog.FieldCacheTTLOverridden)
 	}
+	if m.cache_hit_rate_adjustment != nil {
+		fields = append(fields, usagelog.FieldCacheHitRateAdjustment)
+	}
+	if m.cache_read_tokens_reduction != nil {
+		fields = append(fields, usagelog.FieldCacheReadTokensReduction)
+	}
+	if m.total_cost_before_adjustment != nil {
+		fields = append(fields, usagelog.FieldTotalCostBeforeAdjustment)
+	}
 	if m.created_at != nil {
 		fields = append(fields, usagelog.FieldCreatedAt)
 	}
@@ -48377,6 +48661,12 @@ func (m *UsageLogMutation) Field(name string) (ent.Value, bool) {
 		return m.VideoDurationSeconds()
 	case usagelog.FieldCacheTTLOverridden:
 		return m.CacheTTLOverridden()
+	case usagelog.FieldCacheHitRateAdjustment:
+		return m.CacheHitRateAdjustment()
+	case usagelog.FieldCacheReadTokensReduction:
+		return m.CacheReadTokensReduction()
+	case usagelog.FieldTotalCostBeforeAdjustment:
+		return m.TotalCostBeforeAdjustment()
 	case usagelog.FieldCreatedAt:
 		return m.CreatedAt()
 	}
@@ -48484,6 +48774,12 @@ func (m *UsageLogMutation) OldField(ctx context.Context, name string) (ent.Value
 		return m.OldVideoDurationSeconds(ctx)
 	case usagelog.FieldCacheTTLOverridden:
 		return m.OldCacheTTLOverridden(ctx)
+	case usagelog.FieldCacheHitRateAdjustment:
+		return m.OldCacheHitRateAdjustment(ctx)
+	case usagelog.FieldCacheReadTokensReduction:
+		return m.OldCacheReadTokensReduction(ctx)
+	case usagelog.FieldTotalCostBeforeAdjustment:
+		return m.OldTotalCostBeforeAdjustment(ctx)
 	case usagelog.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
 	}
@@ -48831,6 +49127,27 @@ func (m *UsageLogMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetCacheTTLOverridden(v)
 		return nil
+	case usagelog.FieldCacheHitRateAdjustment:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCacheHitRateAdjustment(v)
+		return nil
+	case usagelog.FieldCacheReadTokensReduction:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCacheReadTokensReduction(v)
+		return nil
+	case usagelog.FieldTotalCostBeforeAdjustment:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTotalCostBeforeAdjustment(v)
+		return nil
 	case usagelog.FieldCreatedAt:
 		v, ok := value.(time.Time)
 		if !ok {
@@ -48915,6 +49232,15 @@ func (m *UsageLogMutation) AddedFields() []string {
 	if m.addvideo_duration_seconds != nil {
 		fields = append(fields, usagelog.FieldVideoDurationSeconds)
 	}
+	if m.addcache_hit_rate_adjustment != nil {
+		fields = append(fields, usagelog.FieldCacheHitRateAdjustment)
+	}
+	if m.addcache_read_tokens_reduction != nil {
+		fields = append(fields, usagelog.FieldCacheReadTokensReduction)
+	}
+	if m.addtotal_cost_before_adjustment != nil {
+		fields = append(fields, usagelog.FieldTotalCostBeforeAdjustment)
+	}
 	return fields
 }
 
@@ -48969,6 +49295,12 @@ func (m *UsageLogMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedVideoCount()
 	case usagelog.FieldVideoDurationSeconds:
 		return m.AddedVideoDurationSeconds()
+	case usagelog.FieldCacheHitRateAdjustment:
+		return m.AddedCacheHitRateAdjustment()
+	case usagelog.FieldCacheReadTokensReduction:
+		return m.AddedCacheReadTokensReduction()
+	case usagelog.FieldTotalCostBeforeAdjustment:
+		return m.AddedTotalCostBeforeAdjustment()
 	}
 	return nil, false
 }
@@ -49139,6 +49471,27 @@ func (m *UsageLogMutation) AddField(name string, value ent.Value) error {
 		}
 		m.AddVideoDurationSeconds(v)
 		return nil
+	case usagelog.FieldCacheHitRateAdjustment:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddCacheHitRateAdjustment(v)
+		return nil
+	case usagelog.FieldCacheReadTokensReduction:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddCacheReadTokensReduction(v)
+		return nil
+	case usagelog.FieldTotalCostBeforeAdjustment:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddTotalCostBeforeAdjustment(v)
+		return nil
 	}
 	return fmt.Errorf("unknown UsageLog numeric field %s", name)
 }
@@ -49212,6 +49565,9 @@ func (m *UsageLogMutation) ClearedFields() []string {
 	}
 	if m.FieldCleared(usagelog.FieldVideoDurationSeconds) {
 		fields = append(fields, usagelog.FieldVideoDurationSeconds)
+	}
+	if m.FieldCleared(usagelog.FieldTotalCostBeforeAdjustment) {
+		fields = append(fields, usagelog.FieldTotalCostBeforeAdjustment)
 	}
 	return fields
 }
@@ -49292,6 +49648,9 @@ func (m *UsageLogMutation) ClearField(name string) error {
 		return nil
 	case usagelog.FieldVideoDurationSeconds:
 		m.ClearVideoDurationSeconds()
+		return nil
+	case usagelog.FieldTotalCostBeforeAdjustment:
+		m.ClearTotalCostBeforeAdjustment()
 		return nil
 	}
 	return fmt.Errorf("unknown UsageLog nullable field %s", name)
@@ -49444,6 +49803,15 @@ func (m *UsageLogMutation) ResetField(name string) error {
 		return nil
 	case usagelog.FieldCacheTTLOverridden:
 		m.ResetCacheTTLOverridden()
+		return nil
+	case usagelog.FieldCacheHitRateAdjustment:
+		m.ResetCacheHitRateAdjustment()
+		return nil
+	case usagelog.FieldCacheReadTokensReduction:
+		m.ResetCacheReadTokensReduction()
+		return nil
+	case usagelog.FieldTotalCostBeforeAdjustment:
+		m.ResetTotalCostBeforeAdjustment()
 		return nil
 	case usagelog.FieldCreatedAt:
 		m.ResetCreatedAt()

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/cachehitadj"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
@@ -185,7 +186,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	}
 
 	// Calculate cost
-	tokens := UsageTokens{
+	rawTokens := UsageTokens{
 		InputTokens:            actualInputTokens,
 		ImageInputTokens:       max(result.Usage.ImageInputTokens-result.Usage.ImageCacheReadTokens, 0),
 		ImageCacheReadTokens:   result.Usage.ImageCacheReadTokens,
@@ -195,6 +196,22 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		CacheCreation12hTokens: result.Usage.CacheCreation12hInputTokens,
 		CacheReadTokens:        result.Usage.CacheReadInputTokens,
 		ImageOutputTokens:      result.Usage.ImageOutputTokens,
+	}
+	// 图片端点的响应 usage 原样透传，计费与用量行不做缓存命中率修正。
+	adjustment := 0.0
+	if !result.ImageEndpoint {
+		adjustment = CacheHitRateAdjustmentFromGroup(apiKey.Group)
+	}
+	adj := cachehitadj.Adjust(
+		rawTokens.InputTokens,
+		rawTokens.CacheReadTokens,
+		rawTokens.CacheCreationTokens,
+		adjustment,
+	)
+	tokens := rawTokens
+	if adj.Applied {
+		tokens.InputTokens = adj.InputTokens
+		tokens.CacheReadTokens = adj.CacheReadTokens
 	}
 
 	// Get rate multiplier
@@ -333,6 +350,29 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		}
 	}
 
+	rawTotalCost := cost.TotalCost
+	if adj.Applied {
+		// 使用修正前的原始 token 计算真实总成本（含 response_model 倍率），用于账号配额与成本统计。
+		rawMultiplier := baseMultiplier * groupPeakFactor(apiKey, firstUsageBillingModel(billingModels), pricingAt)
+		if rawCost, rawErr := s.calculateOpenAIRecordUsageCost(
+			ctx,
+			result,
+			apiKey,
+			billingModels,
+			rawMultiplier,
+			imageMultiplier,
+			videoMultiplier,
+			baseMultiplier,
+			rawTokens,
+			serviceTier,
+			longContextBillingGate,
+			modelLongContextExempt,
+			pricingAt,
+		); rawErr == nil && rawCost != nil {
+			rawTotalCost = rawCost.TotalCost
+		}
+	}
+
 	// Determine billing type
 	isSubscriptionBilling := subscription != nil && apiKey.Group != nil && apiKey.Group.IsSubscriptionType()
 	billingType := BillingTypeBalance
@@ -402,12 +442,14 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		RequestedReasoningEffort: coalesceRequestedReasoningEffort(result.RequestedReasoningEffort, result.ReasoningEffort),
 		InboundEndpoint:          optionalTrimmedStringPtr(input.InboundEndpoint),
 		UpstreamEndpoint:         optionalTrimmedStringPtr(input.UpstreamEndpoint),
-		InputTokens:              actualInputTokens,
+		InputTokens:              tokens.InputTokens,
 		OutputTokens:             result.Usage.OutputTokens,
 		CacheCreationTokens:      result.Usage.CacheCreationInputTokens,
 		CacheCreation30mTokens:   result.Usage.CacheCreation30mInputTokens,
 		CacheCreation12hTokens:   result.Usage.CacheCreation12hInputTokens,
-		CacheReadTokens:          result.Usage.CacheReadInputTokens,
+		CacheReadTokens:          tokens.CacheReadTokens,
+		CacheHitRateAdjustment:   adj.Adjustment,
+		CacheReadTokensReduction: adj.Reduction,
 		ImageInputTokens:         result.Usage.ImageInputTokens,
 		ImageOutputTokens:        result.Usage.ImageOutputTokens,
 		ImageCount:               result.ImageCount,
@@ -417,6 +459,10 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		ImageSizeSource:          optionalTrimmedStringPtr(result.ImageSizeSource),
 		ImageSizeBreakdown:       imageSizeBreakdown,
 		NativeCompactionV2:       input.NativeCompactionV2,
+	}
+	if adj.Applied {
+		before := rawTotalCost
+		usageLog.TotalCostBeforeAdjustment = &before
 	}
 	isVideoUsage := isGrokVideoUsageResult(result, billingModels)
 	if isVideoUsage {
@@ -490,13 +536,19 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		usageLog.SubscriptionID = &subscription.ID
 	}
 
-	// 计算账号统计定价费用（使用最终上游模型匹配自定义规则）
+	// 计算账号统计定价费用（使用最终上游模型匹配自定义规则，基于真实 token 与真实 rawTotalCost）
 	if apiKey.GroupID != nil {
 		applyAccountStatsCost(ctx, usageLog, s.channelService, s.billingService,
 			account.ID, *apiKey.GroupID, result.UpstreamModel, result.Model,
-			tokens, cost.TotalCost, pricingAt,
+			rawTokens, rawTotalCost, pricingAt,
 			accountStatsLongContextPricingEnabled(longContextBillingGate) && !modelLongContextExempt, 1,
 		)
+	}
+	// SQL 聚合用 COALESCE(account_stats_cost, total_cost)；修正生效且无独立统计价时，
+	// 显式写入真实 rawTotalCost，防止回落到修正后的 total_cost。
+	if adj.Applied && usageLog.AccountStatsCost == nil {
+		rc := rawTotalCost
+		usageLog.AccountStatsCost = &rc
 	}
 
 	simpleModeKeyRateLimitOnly := simpleModeKeyRateLimitBillingEnabled(s.cfg, apiKey)
@@ -528,6 +580,10 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 			Platform:                   quotaPlatform,
 			SimpleModeKeyRateLimitOnly: simpleModeKeyRateLimitOnly,
 			EffectiveTokenMultiplier:   multiplier,
+		}
+		if adj.Applied {
+			rc := rawTotalCost
+			billingParams.AccountRawTotalCost = &rc
 		}
 		billingParams.SubscriptionTokens = computeSubscriptionTokens(usageLog, billingParams)
 		_, err := applyUsageBilling(ctx, requestID, usageLog, billingParams, s.billingDeps(), s.usageBillingRepo)

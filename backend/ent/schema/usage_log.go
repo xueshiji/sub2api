@@ -185,6 +185,18 @@ func (UsageLog) Fields() []ent.Field {
 		field.Bool("cache_ttl_overridden").
 			Default(false),
 
+		// 缓存命中率修正快照与扣减 token 数（仅管理端审计使用）
+		field.Float("cache_hit_rate_adjustment").
+			Default(0).
+			SchemaType(map[string]string{dialect.Postgres: "decimal(10,4)"}),
+		field.Int("cache_read_tokens_reduction").
+			Default(0),
+		// total_cost_before_adjustment: 缓存命中率修正生效时按修正前 token 算出的售价口径成本（NULL 表示未修正）
+		field.Float("total_cost_before_adjustment").
+			Optional().
+			Nillable().
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,10)"}),
+
 		// 时间戳（只有 created_at，日志不可修改）
 		field.Time("created_at").
 			Default(time.Now).

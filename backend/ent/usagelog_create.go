@@ -651,6 +651,48 @@ func (_c *UsageLogCreate) SetNillableCacheTTLOverridden(v *bool) *UsageLogCreate
 	return _c
 }
 
+// SetCacheHitRateAdjustment sets the "cache_hit_rate_adjustment" field.
+func (_c *UsageLogCreate) SetCacheHitRateAdjustment(v float64) *UsageLogCreate {
+	_c.mutation.SetCacheHitRateAdjustment(v)
+	return _c
+}
+
+// SetNillableCacheHitRateAdjustment sets the "cache_hit_rate_adjustment" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableCacheHitRateAdjustment(v *float64) *UsageLogCreate {
+	if v != nil {
+		_c.SetCacheHitRateAdjustment(*v)
+	}
+	return _c
+}
+
+// SetCacheReadTokensReduction sets the "cache_read_tokens_reduction" field.
+func (_c *UsageLogCreate) SetCacheReadTokensReduction(v int) *UsageLogCreate {
+	_c.mutation.SetCacheReadTokensReduction(v)
+	return _c
+}
+
+// SetNillableCacheReadTokensReduction sets the "cache_read_tokens_reduction" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableCacheReadTokensReduction(v *int) *UsageLogCreate {
+	if v != nil {
+		_c.SetCacheReadTokensReduction(*v)
+	}
+	return _c
+}
+
+// SetTotalCostBeforeAdjustment sets the "total_cost_before_adjustment" field.
+func (_c *UsageLogCreate) SetTotalCostBeforeAdjustment(v float64) *UsageLogCreate {
+	_c.mutation.SetTotalCostBeforeAdjustment(v)
+	return _c
+}
+
+// SetNillableTotalCostBeforeAdjustment sets the "total_cost_before_adjustment" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableTotalCostBeforeAdjustment(v *float64) *UsageLogCreate {
+	if v != nil {
+		_c.SetTotalCostBeforeAdjustment(*v)
+	}
+	return _c
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_c *UsageLogCreate) SetCreatedAt(v time.Time) *UsageLogCreate {
 	_c.mutation.SetCreatedAt(v)
@@ -808,6 +850,14 @@ func (_c *UsageLogCreate) defaults() {
 	if _, ok := _c.mutation.CacheTTLOverridden(); !ok {
 		v := usagelog.DefaultCacheTTLOverridden
 		_c.mutation.SetCacheTTLOverridden(v)
+	}
+	if _, ok := _c.mutation.CacheHitRateAdjustment(); !ok {
+		v := usagelog.DefaultCacheHitRateAdjustment
+		_c.mutation.SetCacheHitRateAdjustment(v)
+	}
+	if _, ok := _c.mutation.CacheReadTokensReduction(); !ok {
+		v := usagelog.DefaultCacheReadTokensReduction
+		_c.mutation.SetCacheReadTokensReduction(v)
 	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		v := usagelog.DefaultCreatedAt()
@@ -969,6 +1019,12 @@ func (_c *UsageLogCreate) check() error {
 	}
 	if _, ok := _c.mutation.CacheTTLOverridden(); !ok {
 		return &ValidationError{Name: "cache_ttl_overridden", err: errors.New(`ent: missing required field "UsageLog.cache_ttl_overridden"`)}
+	}
+	if _, ok := _c.mutation.CacheHitRateAdjustment(); !ok {
+		return &ValidationError{Name: "cache_hit_rate_adjustment", err: errors.New(`ent: missing required field "UsageLog.cache_hit_rate_adjustment"`)}
+	}
+	if _, ok := _c.mutation.CacheReadTokensReduction(); !ok {
+		return &ValidationError{Name: "cache_read_tokens_reduction", err: errors.New(`ent: missing required field "UsageLog.cache_read_tokens_reduction"`)}
 	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		return &ValidationError{Name: "created_at", err: errors.New(`ent: missing required field "UsageLog.created_at"`)}
@@ -1180,6 +1236,18 @@ func (_c *UsageLogCreate) createSpec() (*UsageLog, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.CacheTTLOverridden(); ok {
 		_spec.SetField(usagelog.FieldCacheTTLOverridden, field.TypeBool, value)
 		_node.CacheTTLOverridden = value
+	}
+	if value, ok := _c.mutation.CacheHitRateAdjustment(); ok {
+		_spec.SetField(usagelog.FieldCacheHitRateAdjustment, field.TypeFloat64, value)
+		_node.CacheHitRateAdjustment = value
+	}
+	if value, ok := _c.mutation.CacheReadTokensReduction(); ok {
+		_spec.SetField(usagelog.FieldCacheReadTokensReduction, field.TypeInt, value)
+		_node.CacheReadTokensReduction = value
+	}
+	if value, ok := _c.mutation.TotalCostBeforeAdjustment(); ok {
+		_spec.SetField(usagelog.FieldTotalCostBeforeAdjustment, field.TypeFloat64, value)
+		_node.TotalCostBeforeAdjustment = &value
 	}
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(usagelog.FieldCreatedAt, field.TypeTime, value)
@@ -2165,6 +2233,66 @@ func (u *UsageLogUpsert) SetCacheTTLOverridden(v bool) *UsageLogUpsert {
 // UpdateCacheTTLOverridden sets the "cache_ttl_overridden" field to the value that was provided on create.
 func (u *UsageLogUpsert) UpdateCacheTTLOverridden() *UsageLogUpsert {
 	u.SetExcluded(usagelog.FieldCacheTTLOverridden)
+	return u
+}
+
+// SetCacheHitRateAdjustment sets the "cache_hit_rate_adjustment" field.
+func (u *UsageLogUpsert) SetCacheHitRateAdjustment(v float64) *UsageLogUpsert {
+	u.Set(usagelog.FieldCacheHitRateAdjustment, v)
+	return u
+}
+
+// UpdateCacheHitRateAdjustment sets the "cache_hit_rate_adjustment" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateCacheHitRateAdjustment() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldCacheHitRateAdjustment)
+	return u
+}
+
+// AddCacheHitRateAdjustment adds v to the "cache_hit_rate_adjustment" field.
+func (u *UsageLogUpsert) AddCacheHitRateAdjustment(v float64) *UsageLogUpsert {
+	u.Add(usagelog.FieldCacheHitRateAdjustment, v)
+	return u
+}
+
+// SetCacheReadTokensReduction sets the "cache_read_tokens_reduction" field.
+func (u *UsageLogUpsert) SetCacheReadTokensReduction(v int) *UsageLogUpsert {
+	u.Set(usagelog.FieldCacheReadTokensReduction, v)
+	return u
+}
+
+// UpdateCacheReadTokensReduction sets the "cache_read_tokens_reduction" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateCacheReadTokensReduction() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldCacheReadTokensReduction)
+	return u
+}
+
+// AddCacheReadTokensReduction adds v to the "cache_read_tokens_reduction" field.
+func (u *UsageLogUpsert) AddCacheReadTokensReduction(v int) *UsageLogUpsert {
+	u.Add(usagelog.FieldCacheReadTokensReduction, v)
+	return u
+}
+
+// SetTotalCostBeforeAdjustment sets the "total_cost_before_adjustment" field.
+func (u *UsageLogUpsert) SetTotalCostBeforeAdjustment(v float64) *UsageLogUpsert {
+	u.Set(usagelog.FieldTotalCostBeforeAdjustment, v)
+	return u
+}
+
+// UpdateTotalCostBeforeAdjustment sets the "total_cost_before_adjustment" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateTotalCostBeforeAdjustment() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldTotalCostBeforeAdjustment)
+	return u
+}
+
+// AddTotalCostBeforeAdjustment adds v to the "total_cost_before_adjustment" field.
+func (u *UsageLogUpsert) AddTotalCostBeforeAdjustment(v float64) *UsageLogUpsert {
+	u.Add(usagelog.FieldTotalCostBeforeAdjustment, v)
+	return u
+}
+
+// ClearTotalCostBeforeAdjustment clears the value of the "total_cost_before_adjustment" field.
+func (u *UsageLogUpsert) ClearTotalCostBeforeAdjustment() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldTotalCostBeforeAdjustment)
 	return u
 }
 
@@ -3197,6 +3325,76 @@ func (u *UsageLogUpsertOne) SetCacheTTLOverridden(v bool) *UsageLogUpsertOne {
 func (u *UsageLogUpsertOne) UpdateCacheTTLOverridden() *UsageLogUpsertOne {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.UpdateCacheTTLOverridden()
+	})
+}
+
+// SetCacheHitRateAdjustment sets the "cache_hit_rate_adjustment" field.
+func (u *UsageLogUpsertOne) SetCacheHitRateAdjustment(v float64) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetCacheHitRateAdjustment(v)
+	})
+}
+
+// AddCacheHitRateAdjustment adds v to the "cache_hit_rate_adjustment" field.
+func (u *UsageLogUpsertOne) AddCacheHitRateAdjustment(v float64) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddCacheHitRateAdjustment(v)
+	})
+}
+
+// UpdateCacheHitRateAdjustment sets the "cache_hit_rate_adjustment" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateCacheHitRateAdjustment() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateCacheHitRateAdjustment()
+	})
+}
+
+// SetCacheReadTokensReduction sets the "cache_read_tokens_reduction" field.
+func (u *UsageLogUpsertOne) SetCacheReadTokensReduction(v int) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetCacheReadTokensReduction(v)
+	})
+}
+
+// AddCacheReadTokensReduction adds v to the "cache_read_tokens_reduction" field.
+func (u *UsageLogUpsertOne) AddCacheReadTokensReduction(v int) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddCacheReadTokensReduction(v)
+	})
+}
+
+// UpdateCacheReadTokensReduction sets the "cache_read_tokens_reduction" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateCacheReadTokensReduction() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateCacheReadTokensReduction()
+	})
+}
+
+// SetTotalCostBeforeAdjustment sets the "total_cost_before_adjustment" field.
+func (u *UsageLogUpsertOne) SetTotalCostBeforeAdjustment(v float64) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetTotalCostBeforeAdjustment(v)
+	})
+}
+
+// AddTotalCostBeforeAdjustment adds v to the "total_cost_before_adjustment" field.
+func (u *UsageLogUpsertOne) AddTotalCostBeforeAdjustment(v float64) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddTotalCostBeforeAdjustment(v)
+	})
+}
+
+// UpdateTotalCostBeforeAdjustment sets the "total_cost_before_adjustment" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateTotalCostBeforeAdjustment() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateTotalCostBeforeAdjustment()
+	})
+}
+
+// ClearTotalCostBeforeAdjustment clears the value of the "total_cost_before_adjustment" field.
+func (u *UsageLogUpsertOne) ClearTotalCostBeforeAdjustment() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearTotalCostBeforeAdjustment()
 	})
 }
 
@@ -4395,6 +4593,76 @@ func (u *UsageLogUpsertBulk) SetCacheTTLOverridden(v bool) *UsageLogUpsertBulk {
 func (u *UsageLogUpsertBulk) UpdateCacheTTLOverridden() *UsageLogUpsertBulk {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.UpdateCacheTTLOverridden()
+	})
+}
+
+// SetCacheHitRateAdjustment sets the "cache_hit_rate_adjustment" field.
+func (u *UsageLogUpsertBulk) SetCacheHitRateAdjustment(v float64) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetCacheHitRateAdjustment(v)
+	})
+}
+
+// AddCacheHitRateAdjustment adds v to the "cache_hit_rate_adjustment" field.
+func (u *UsageLogUpsertBulk) AddCacheHitRateAdjustment(v float64) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddCacheHitRateAdjustment(v)
+	})
+}
+
+// UpdateCacheHitRateAdjustment sets the "cache_hit_rate_adjustment" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateCacheHitRateAdjustment() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateCacheHitRateAdjustment()
+	})
+}
+
+// SetCacheReadTokensReduction sets the "cache_read_tokens_reduction" field.
+func (u *UsageLogUpsertBulk) SetCacheReadTokensReduction(v int) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetCacheReadTokensReduction(v)
+	})
+}
+
+// AddCacheReadTokensReduction adds v to the "cache_read_tokens_reduction" field.
+func (u *UsageLogUpsertBulk) AddCacheReadTokensReduction(v int) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddCacheReadTokensReduction(v)
+	})
+}
+
+// UpdateCacheReadTokensReduction sets the "cache_read_tokens_reduction" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateCacheReadTokensReduction() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateCacheReadTokensReduction()
+	})
+}
+
+// SetTotalCostBeforeAdjustment sets the "total_cost_before_adjustment" field.
+func (u *UsageLogUpsertBulk) SetTotalCostBeforeAdjustment(v float64) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetTotalCostBeforeAdjustment(v)
+	})
+}
+
+// AddTotalCostBeforeAdjustment adds v to the "total_cost_before_adjustment" field.
+func (u *UsageLogUpsertBulk) AddTotalCostBeforeAdjustment(v float64) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddTotalCostBeforeAdjustment(v)
+	})
+}
+
+// UpdateTotalCostBeforeAdjustment sets the "total_cost_before_adjustment" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateTotalCostBeforeAdjustment() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateTotalCostBeforeAdjustment()
+	})
+}
+
+// ClearTotalCostBeforeAdjustment clears the value of the "total_cost_before_adjustment" field.
+func (u *UsageLogUpsertBulk) ClearTotalCostBeforeAdjustment() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearTotalCostBeforeAdjustment()
 	})
 }
 

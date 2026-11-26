@@ -154,6 +154,7 @@ func GroupFromServiceAdmin(g *service.Group) *AdminGroup {
 		ProfitControlEnabled:        g.ProfitControlEnabled,
 		ProfitMinMargin:             g.ProfitMinMargin,
 		ProfitSafetyBuffer:          g.ProfitSafetyBuffer,
+		CacheHitRateAdjustment:      g.CacheHitRateAdjustment,
 		ModelPricing:                g.ModelPricing,
 		ModelRouting:                g.ModelRouting,
 		ModelRoutingEnabled:         g.ModelRoutingEnabled,
@@ -777,19 +778,21 @@ func UsageLogFromServiceAdmin(l *service.UsageLog) *AdminUsageLog {
 	usageLog := usageLogFromServiceUser(l)
 	usageLog.UpstreamEndpoint = l.UpstreamEndpoint
 	return &AdminUsageLog{
-		UsageLog:                usageLog,
-		UpstreamModel:           l.UpstreamModel,
-		UpstreamReasoningEffort: adminUpstreamReasoningEffort(l),
-		UpstreamResponseModel:   l.UpstreamResponseModel,
-		UpstreamModelMismatch:   l.UpstreamModelMismatch,
-		ChannelID:               l.ChannelID,
-		ModelMappingChain:       l.ModelMappingChain,
-		UpstreamRequestID:       l.UpstreamRequestID,
-		BillingTier:             l.BillingTier,
-		AccountRateMultiplier:   l.AccountRateMultiplier,
-		AccountStatsCost:        l.AccountStatsCost,
-		IPAddress:               l.IPAddress,
-		Account:                 AccountSummaryFromService(l.Account),
+		UsageLog:                 usageLog,
+		UpstreamModel:            l.UpstreamModel,
+		UpstreamReasoningEffort:  adminUpstreamReasoningEffort(l),
+		UpstreamResponseModel:    l.UpstreamResponseModel,
+		UpstreamModelMismatch:    l.UpstreamModelMismatch,
+		ChannelID:                l.ChannelID,
+		ModelMappingChain:        l.ModelMappingChain,
+		UpstreamRequestID:        l.UpstreamRequestID,
+		BillingTier:              l.BillingTier,
+		AccountRateMultiplier:    l.AccountRateMultiplier,
+		AccountStatsCost:         l.AccountStatsCost,
+		CacheHitRateAdjustment:   l.CacheHitRateAdjustment,
+		CacheReadTokensReduction: l.CacheReadTokensReduction,
+		IPAddress:                l.IPAddress,
+		Account:                  AccountSummaryFromService(l.Account),
 	}
 }
 

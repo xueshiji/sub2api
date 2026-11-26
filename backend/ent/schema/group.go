@@ -334,6 +334,13 @@ func (Group) Fields() []ent.Field {
 			SchemaType(map[string]string{dialect.Postgres: "decimal(10,4)"}).
 			Default(0).
 			Comment("安全缓冲，小数；与 margin 相加后从下游倍率中扣除，默认 0"),
+
+		// 缓存命中率修正参数：小数（0~0.10 对应 0%~10%），仅真实缓存命中率 > 10% 时生效，
+		// 将对应比例的总输入 token 从 cache_read_tokens 扣减并转入 input_tokens。
+		field.Float("cache_hit_rate_adjustment").
+			SchemaType(map[string]string{dialect.Postgres: "decimal(10,4)"}).
+			Default(0).
+			Comment("缓存命中率修正比例（小数 0~0.10，如 0.05 表示扣减 5%）；真实缓存命中率大于 10% 时生效"),
 	}
 }
 

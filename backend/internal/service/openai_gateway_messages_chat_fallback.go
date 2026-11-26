@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/cachehitadj"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
@@ -175,7 +176,9 @@ func (s *OpenAIGatewayService) bufferChatCompletionsAsAnthropic(
 	if s.responseHeaderFilter != nil {
 		responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 	}
-	c.JSON(http.StatusOK, anthropicResp)
+	writeJSONWithUsageRewrite(c, http.StatusOK, anthropicResp, cacheHitRateAdjustmentFromGin(c), func(b []byte, adj float64) []byte {
+		return cachehitadj.RewriteAnthropicUsageJSON(b, "usage", adj)
+	})
 
 	return &OpenAIForwardResult{
 		RequestID:                     requestID,
@@ -206,6 +209,8 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsAnthropic(
 ) (*OpenAIForwardResult, error) {
 	requestID := resp.Header.Get("x-request-id")
 	writeStreamHeaders := s.newStreamHeaderWriter(c, resp.Header)
+	cacheAdj := cacheHitRateAdjustmentFromGin(c)
+	cacheUsageRewriter := &cachehitadj.AnthropicStreamRewriter{}
 
 	anthropicState := apicompat.NewChatCompletionsToAnthropicStreamState(compositeClientModel(c.Request.Context(), originalModel))
 	clientDisconnected := false
@@ -224,6 +229,7 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsAnthropic(
 				continue
 			}
 			writeStreamHeaders()
+			sse = rewriteSSEBlock(sse, cacheAdj, cacheUsageRewriter.Rewrite)
 			if _, err := fmt.Fprint(c.Writer, sse); err != nil {
 				clientDisconnected = true
 				break
@@ -269,6 +275,7 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsAnthropic(
 				continue
 			}
 			writeStreamHeaders()
+			sse = rewriteSSEBlock(sse, cacheAdj, cacheUsageRewriter.Rewrite)
 			if _, err := fmt.Fprint(c.Writer, sse); err != nil {
 				clientDisconnected = true
 				break

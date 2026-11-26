@@ -110,6 +110,12 @@ const (
 	FieldVideoDurationSeconds = "video_duration_seconds"
 	// FieldCacheTTLOverridden holds the string denoting the cache_ttl_overridden field in the database.
 	FieldCacheTTLOverridden = "cache_ttl_overridden"
+	// FieldCacheHitRateAdjustment holds the string denoting the cache_hit_rate_adjustment field in the database.
+	FieldCacheHitRateAdjustment = "cache_hit_rate_adjustment"
+	// FieldCacheReadTokensReduction holds the string denoting the cache_read_tokens_reduction field in the database.
+	FieldCacheReadTokensReduction = "cache_read_tokens_reduction"
+	// FieldTotalCostBeforeAdjustment holds the string denoting the total_cost_before_adjustment field in the database.
+	FieldTotalCostBeforeAdjustment = "total_cost_before_adjustment"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// EdgeUser holds the string denoting the user edge name in mutations.
@@ -212,6 +218,9 @@ var Columns = []string{
 	FieldVideoResolution,
 	FieldVideoDurationSeconds,
 	FieldCacheTTLOverridden,
+	FieldCacheHitRateAdjustment,
+	FieldCacheReadTokensReduction,
+	FieldTotalCostBeforeAdjustment,
 	FieldCreatedAt,
 }
 
@@ -298,6 +307,10 @@ var (
 	VideoResolutionValidator func(string) error
 	// DefaultCacheTTLOverridden holds the default value on creation for the "cache_ttl_overridden" field.
 	DefaultCacheTTLOverridden bool
+	// DefaultCacheHitRateAdjustment holds the default value on creation for the "cache_hit_rate_adjustment" field.
+	DefaultCacheHitRateAdjustment float64
+	// DefaultCacheReadTokensReduction holds the default value on creation for the "cache_read_tokens_reduction" field.
+	DefaultCacheReadTokensReduction int
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
 	DefaultCreatedAt func() time.Time
 )
@@ -543,6 +556,21 @@ func ByVideoDurationSeconds(opts ...sql.OrderTermOption) OrderOption {
 // ByCacheTTLOverridden orders the results by the cache_ttl_overridden field.
 func ByCacheTTLOverridden(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldCacheTTLOverridden, opts...).ToFunc()
+}
+
+// ByCacheHitRateAdjustment orders the results by the cache_hit_rate_adjustment field.
+func ByCacheHitRateAdjustment(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldCacheHitRateAdjustment, opts...).ToFunc()
+}
+
+// ByCacheReadTokensReduction orders the results by the cache_read_tokens_reduction field.
+func ByCacheReadTokensReduction(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldCacheReadTokensReduction, opts...).ToFunc()
+}
+
+// ByTotalCostBeforeAdjustment orders the results by the total_cost_before_adjustment field.
+func ByTotalCostBeforeAdjustment(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldTotalCostBeforeAdjustment, opts...).ToFunc()
 }
 
 // ByCreatedAt orders the results by the created_at field.

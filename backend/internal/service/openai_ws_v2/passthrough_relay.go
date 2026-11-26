@@ -82,6 +82,7 @@ type RelayOptions struct {
 	OnUsageParseFailure             func(eventType string, usageRaw string)
 	OnTurnComplete                  func(turn RelayTurnResult)
 	BeforeWriteClient               func(msgType coderws.MessageType, payload []byte, wroteDownstream bool) error
+	RewriteClientPayload            func(msgType coderws.MessageType, payload []byte) []byte
 	BeforeClientWrite               func(msgType coderws.MessageType, payload []byte)
 	AfterClientWrite                func(msgType coderws.MessageType, payload []byte, writeErr error)
 	BeforeRelayCancel               func(exit RelayExit)
@@ -309,6 +310,7 @@ func Relay(
 			options.OnUsageParseFailure,
 			options.OnTurnComplete,
 			options.BeforeWriteClient,
+			options.RewriteClientPayload,
 			options.BeforeClientWrite,
 			options.AfterClientWrite,
 			func(msgType coderws.MessageType, payload []byte) {
@@ -535,6 +537,7 @@ func runUpstreamToClient(
 	onUsageParseFailure func(eventType string, usageRaw string),
 	onTurnComplete func(turn RelayTurnResult),
 	beforeWriteClient func(msgType coderws.MessageType, payload []byte, wroteDownstream bool) error,
+	rewriteClientPayload func(msgType coderws.MessageType, payload []byte) []byte,
 	beforeClientWrite func(msgType coderws.MessageType, payload []byte),
 	afterClientWrite func(msgType coderws.MessageType, payload []byte, writeErr error),
 	afterWriteClient func(msgType coderws.MessageType, payload []byte),
@@ -638,12 +641,16 @@ func runUpstreamToClient(
 			markActivity()
 			continue
 		}
-		if beforeClientWrite != nil {
-			beforeClientWrite(msgType, payload)
+		writePayload := payload
+		if rewriteClientPayload != nil {
+			writePayload = rewriteClientPayload(msgType, payload)
 		}
-		writeErr := writeClient(msgType, payload)
+		if beforeClientWrite != nil {
+			beforeClientWrite(msgType, writePayload)
+		}
+		writeErr := writeClient(msgType, writePayload)
 		if afterClientWrite != nil {
-			afterClientWrite(msgType, payload, writeErr)
+			afterClientWrite(msgType, writePayload, writeErr)
 		}
 		if writeErr != nil {
 			emitRelayTrace(onTrace, RelayTraceEvent{

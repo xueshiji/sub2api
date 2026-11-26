@@ -921,6 +921,11 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 
 	needModelReplace := originalModel != mappedModel
 	clientModel := compositeClientModel(ctx, "")
+	cacheAdj := cacheHitRateAdjustmentFromContext(ctx)
+	cacheUsageRewriter := &cacheHitStreamRewriter{parse: func(data []byte, usage ClaudeUsage) ClaudeUsage {
+		s.parseSSEUsage(string(data), &usage)
+		return usage
+	}}
 	clientDisconnected := false // 客户端断开标志，断开后继续读取上游以获取完整usage
 	sawTerminalEvent := false
 	useNoopDeltaKeepalive := c != nil && c.Request != nil && shouldUseClaudeCodeNoopDeltaKeepalive(c.GetHeader("User-Agent"))
@@ -1092,32 +1097,22 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 		if anthropicStreamEventIsTerminal(eventName, dataLine) {
 			sawTerminalEvent = true
 		}
-		if !eventChanged {
-			block := ""
-			if eventName != "" {
-				block = "event: " + eventName + "\n"
+		outData := dataLine
+		if eventChanged {
+			if newData, err := json.Marshal(event); err == nil {
+				outData = string(newData)
 			}
-			block += "data: " + dataLine + "\n\n"
-			return []string{block}, dataLine, usagePatch, nil
 		}
-
-		newData, err := json.Marshal(event)
-		if err != nil {
-			// 序列化失败，直接透传原始数据
-			block := ""
-			if eventName != "" {
-				block = "event: " + eventName + "\n"
-			}
-			block += "data: " + dataLine + "\n\n"
-			return []string{block}, dataLine, usagePatch, nil
+		if cacheAdj > 0 && (eventType == "message_start" || eventType == "message_delta") {
+			outData = string(cacheUsageRewriter.Rewrite([]byte(outData), cacheAdj, *usage))
 		}
 
 		block := ""
 		if eventName != "" {
 			block = "event: " + eventName + "\n"
 		}
-		block += "data: " + string(newData) + "\n\n"
-		return []string{block}, string(newData), usagePatch, nil
+		block += "data: " + outData + "\n\n"
+		return []string{block}, outData, usagePatch, nil
 	}
 
 	// SSE 规范要求流结束时补发缓冲中的残余事件：截断流（RST/未写完即关闭）的
@@ -1323,6 +1318,8 @@ type sseUsagePatch struct {
 	hasCacheCreation5m       bool
 	cacheCreation1hTokens    int
 	hasCacheCreation1h       bool
+	// usage is the event's usage object, read for prompt/cache aliases once the counts are merged.
+	usage gjson.Result
 }
 
 func (s *GatewayService) extractSSEUsagePatch(event map[string]any) *sseUsagePatch {
@@ -1339,7 +1336,7 @@ func (s *GatewayService) extractSSEUsagePatch(event map[string]any) *sseUsagePat
 			return nil
 		}
 
-		patch := &sseUsagePatch{}
+		patch := &sseUsagePatch{usage: claudeUsageNode(usageObj)}
 		patch.hasInputTokens = true
 		if v, ok := parseSSEUsageInt(usageObj["input_tokens"]); ok {
 			patch.inputTokens = v
@@ -1370,7 +1367,7 @@ func (s *GatewayService) extractSSEUsagePatch(event map[string]any) *sseUsagePat
 			return nil
 		}
 
-		patch := &sseUsagePatch{}
+		patch := &sseUsagePatch{usage: claudeUsageNode(usageObj)}
 		if v, ok := parseSSEUsageInt(usageObj["input_tokens"]); ok && v > 0 {
 			patch.inputTokens = v
 			patch.hasInputTokens = true
@@ -1426,6 +1423,7 @@ func mergeSSEUsagePatch(usage *ClaudeUsage, patch *sseUsagePatch) {
 	if patch.hasCacheCreation1h {
 		usage.CacheCreation1hTokens = patch.cacheCreation1hTokens
 	}
+	normalizeAnthropicCompatiblePromptUsage(patch.usage, usage)
 }
 
 func parseSSEUsageInt(value any) (int, bool) {
@@ -1542,44 +1540,23 @@ func (s *GatewayService) handleNonStreamingResponse(ctx context.Context, resp *h
 	observer.ObserveAnthropic(body)
 
 	// 解析usage
-	var response struct {
-		Usage ClaudeUsage `json:"usage"`
-	}
-	if err := json.Unmarshal(body, &response); err != nil {
+	body, usage, err := readAnthropicResponseUsage(body)
+	if err != nil {
 		if resp.StatusCode >= http.StatusOK && resp.StatusCode < http.StatusMultipleChoices {
 			return nil, invalidNonStreamingJSONFailoverError(ctx, s.rateLimitService, resp, account, body, err, mappedModel)
 		}
 		return nil, fmt.Errorf("parse response: %w", err)
 	}
 
-	// 解析嵌套的 cache_creation 对象中的 5m/1h 明细
-	cc5m := gjson.GetBytes(body, "usage.cache_creation.ephemeral_5m_input_tokens")
-	cc1h := gjson.GetBytes(body, "usage.cache_creation.ephemeral_1h_input_tokens")
-	if cc5m.Exists() || cc1h.Exists() {
-		response.Usage.CacheCreation5mTokens = int(cc5m.Int())
-		response.Usage.CacheCreation1hTokens = int(cc1h.Int())
-	}
-
-	// 兼容 Kimi cached_tokens → cache_read_input_tokens
-	if response.Usage.CacheReadInputTokens == 0 {
-		cachedTokens := gjson.GetBytes(body, "usage.cached_tokens").Int()
-		if cachedTokens > 0 {
-			response.Usage.CacheReadInputTokens = int(cachedTokens)
-			if newBody, err := sjson.SetBytes(body, "usage.cache_read_input_tokens", cachedTokens); err == nil {
-				body = newBody
-			}
-		}
-	}
-
 	// Cache TTL Override: 重写 non-streaming 响应中的 cache_creation 分类。
 	// 账号级设置优先；全局 1h 请求注入开启时，默认把 usage 计费归回 5m。
 	if overrideTarget, ok := s.resolveCacheTTLUsageOverrideTarget(ctx, account); ok {
-		if applyCacheTTLOverride(&response.Usage, overrideTarget) {
+		if applyCacheTTLOverride(&usage, overrideTarget) {
 			// 同步更新 body JSON 中的嵌套 cache_creation 对象
-			if newBody, err := sjson.SetBytes(body, "usage.cache_creation.ephemeral_5m_input_tokens", response.Usage.CacheCreation5mTokens); err == nil {
+			if newBody, err := sjson.SetBytes(body, "usage.cache_creation.ephemeral_5m_input_tokens", usage.CacheCreation5mTokens); err == nil {
 				body = newBody
 			}
-			if newBody, err := sjson.SetBytes(body, "usage.cache_creation.ephemeral_1h_input_tokens", response.Usage.CacheCreation1hTokens); err == nil {
+			if newBody, err := sjson.SetBytes(body, "usage.cache_creation.ephemeral_1h_input_tokens", usage.CacheCreation1hTokens); err == nil {
 				body = newBody
 			}
 		}
@@ -1601,11 +1578,51 @@ func (s *GatewayService) handleNonStreamingResponse(ctx context.Context, resp *h
 	}
 
 	body = reverseToolNamesIfPresent(c, body)
+	if cacheAdj := cacheHitRateAdjustmentFromContext(ctx); cacheAdj > 0 {
+		body = rewriteAnthropicUsageAsBilled(body, cacheAdj, usage, func(body []byte) ClaudeUsage {
+			_, reread, _ := readAnthropicResponseUsage(body)
+			return reread
+		})
+	}
 
 	// 写入响应
 	c.Data(resp.StatusCode, contentType, body)
 
-	return &response.Usage, nil
+	return &usage, nil
+}
+
+// readAnthropicResponseUsage 按计费口径读取 Messages 响应里的 usage，
+// 并把 cached_tokens 同步成响应体里的 cache_read_input_tokens。
+func readAnthropicResponseUsage(body []byte) ([]byte, ClaudeUsage, error) {
+	var response struct {
+		Usage ClaudeUsage `json:"usage"`
+	}
+	if err := json.Unmarshal(body, &response); err != nil {
+		return body, ClaudeUsage{}, err
+	}
+	usage := response.Usage
+
+	// 解析嵌套的 cache_creation 对象中的 5m/1h 明细
+	cc5m := gjson.GetBytes(body, "usage.cache_creation.ephemeral_5m_input_tokens")
+	cc1h := gjson.GetBytes(body, "usage.cache_creation.ephemeral_1h_input_tokens")
+	if cc5m.Exists() || cc1h.Exists() {
+		usage.CacheCreation5mTokens = int(cc5m.Int())
+		usage.CacheCreation1hTokens = int(cc1h.Int())
+	}
+
+	// 兼容 Kimi cached_tokens → cache_read_input_tokens
+	if usage.CacheReadInputTokens == 0 {
+		cachedTokens := gjson.GetBytes(body, "usage.cached_tokens").Int()
+		if cachedTokens > 0 {
+			usage.CacheReadInputTokens = int(cachedTokens)
+			if newBody, err := sjson.SetBytes(body, "usage.cache_read_input_tokens", cachedTokens); err == nil {
+				body = newBody
+			}
+		}
+	}
+	normalizeAnthropicCompatiblePromptUsage(gjson.GetBytes(body, "usage"), &usage)
+
+	return body, usage, nil
 }
 
 // replaceModelInResponseBody 替换响应体中的model字段

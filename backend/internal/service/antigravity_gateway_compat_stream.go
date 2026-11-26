@@ -12,6 +12,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/cachehitadj"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/gin-gonic/gin"
 )
@@ -25,6 +26,7 @@ type antigravityCompatStreamAdapter interface {
 type antigravityChatStreamAdapter struct {
 	anthropicState *apicompat.AnthropicEventToResponsesState
 	chatState      *apicompat.ResponsesEventToChatState
+	cacheAdj       float64
 }
 
 func newAntigravityChatStreamAdapter(model string, includeUsage bool) *antigravityChatStreamAdapter {
@@ -51,7 +53,7 @@ func (a *antigravityChatStreamAdapter) Finalize(writer *antigravityClientWriter)
 	}
 	for _, chunk := range apicompat.FinalizeResponsesChatStream(a.chatState) {
 		if data, err := apicompat.ChatChunkToSSE(chunk); err == nil {
-			writer.Write([]byte(data))
+			writer.Write([]byte(rewriteSSEBlock(data, a.cacheAdj, cachehitadj.RewriteOpenAIUsageJSON)))
 		}
 	}
 	writer.Write([]byte("data: [DONE]\n\n"))
@@ -64,13 +66,14 @@ func (a *antigravityChatStreamAdapter) WriteError(writer *antigravityClientWrite
 func (a *antigravityChatStreamAdapter) emitResponseEvent(event *apicompat.ResponsesStreamEvent, writer *antigravityClientWriter) {
 	for _, chunk := range apicompat.ResponsesEventToChatChunks(event, a.chatState) {
 		if data, err := apicompat.ChatChunkToSSE(chunk); err == nil {
-			writer.Write([]byte(data))
+			writer.Write([]byte(rewriteSSEBlock(data, a.cacheAdj, cachehitadj.RewriteOpenAIUsageJSON)))
 		}
 	}
 }
 
 type antigravityResponsesStreamAdapter struct {
 	anthropicState *apicompat.AnthropicEventToResponsesState
+	cacheAdj       float64
 }
 
 func newAntigravityResponsesStreamAdapter(model string) *antigravityResponsesStreamAdapter {
@@ -97,7 +100,7 @@ func (a *antigravityResponsesStreamAdapter) WriteError(writer *antigravityClient
 
 func (a *antigravityResponsesStreamAdapter) emitResponseEvent(event apicompat.ResponsesStreamEvent, writer *antigravityClientWriter) {
 	if data, err := apicompat.ResponsesEventToSSE(event); err == nil {
-		writer.Write([]byte(data))
+		writer.Write([]byte(rewriteSSEBlock(data, a.cacheAdj, cachehitadj.RewriteOpenAIUsageJSON)))
 	}
 }
 
@@ -595,12 +598,14 @@ func (s *AntigravityGatewayService) handleChatCompletionsStreamingFromAntigravit
 	originalModel string,
 	includeUsage bool,
 ) (*antigravityStreamResult, error) {
+	chatAdapter := newAntigravityChatStreamAdapter(originalModel, includeUsage)
+	chatAdapter.cacheAdj = cacheHitRateAdjustmentFromGin(c)
 	return s.handleAntigravityCompatStreamAfterHeaders(
 		c,
 		resp,
 		startTime,
 		originalModel,
-		newAntigravityChatStreamAdapter(originalModel, includeUsage),
+		chatAdapter,
 		"antigravity chat completions stream",
 	)
 }
@@ -611,12 +616,14 @@ func (s *AntigravityGatewayService) handleResponsesStreamingFromAntigravity(
 	startTime time.Time,
 	originalModel string,
 ) (*antigravityStreamResult, error) {
+	respAdapter := newAntigravityResponsesStreamAdapter(originalModel)
+	respAdapter.cacheAdj = cacheHitRateAdjustmentFromGin(c)
 	return s.handleAntigravityCompatStreamAfterHeaders(
 		c,
 		resp,
 		startTime,
 		originalModel,
-		newAntigravityResponsesStreamAdapter(originalModel),
+		respAdapter,
 		"antigravity responses stream",
 	)
 }

@@ -1002,6 +1002,20 @@ func (_c *GroupCreate) SetNillableProfitSafetyBuffer(v *float64) *GroupCreate {
 	return _c
 }
 
+// SetCacheHitRateAdjustment sets the "cache_hit_rate_adjustment" field.
+func (_c *GroupCreate) SetCacheHitRateAdjustment(v float64) *GroupCreate {
+	_c.mutation.SetCacheHitRateAdjustment(v)
+	return _c
+}
+
+// SetNillableCacheHitRateAdjustment sets the "cache_hit_rate_adjustment" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableCacheHitRateAdjustment(v *float64) *GroupCreate {
+	if v != nil {
+		_c.SetCacheHitRateAdjustment(*v)
+	}
+	return _c
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_c *GroupCreate) AddAPIKeyIDs(ids ...int64) *GroupCreate {
 	_c.mutation.AddAPIKeyIDs(ids...)
@@ -1323,6 +1337,10 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultProfitSafetyBuffer
 		_c.mutation.SetProfitSafetyBuffer(v)
 	}
+	if _, ok := _c.mutation.CacheHitRateAdjustment(); !ok {
+		v := group.DefaultCacheHitRateAdjustment
+		_c.mutation.SetCacheHitRateAdjustment(v)
+	}
 	return nil
 }
 
@@ -1541,6 +1559,9 @@ func (_c *GroupCreate) check() error {
 	}
 	if _, ok := _c.mutation.ProfitSafetyBuffer(); !ok {
 		return &ValidationError{Name: "profit_safety_buffer", err: errors.New(`ent: missing required field "Group.profit_safety_buffer"`)}
+	}
+	if _, ok := _c.mutation.CacheHitRateAdjustment(); !ok {
+		return &ValidationError{Name: "cache_hit_rate_adjustment", err: errors.New(`ent: missing required field "Group.cache_hit_rate_adjustment"`)}
 	}
 	return nil
 }
@@ -1864,6 +1885,10 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.ProfitSafetyBuffer(); ok {
 		_spec.SetField(group.FieldProfitSafetyBuffer, field.TypeFloat64, value)
 		_node.ProfitSafetyBuffer = value
+	}
+	if value, ok := _c.mutation.CacheHitRateAdjustment(); ok {
+		_spec.SetField(group.FieldCacheHitRateAdjustment, field.TypeFloat64, value)
+		_node.CacheHitRateAdjustment = value
 	}
 	if nodes := _c.mutation.APIKeysIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
@@ -3218,6 +3243,24 @@ func (u *GroupUpsert) UpdateProfitSafetyBuffer() *GroupUpsert {
 // AddProfitSafetyBuffer adds v to the "profit_safety_buffer" field.
 func (u *GroupUpsert) AddProfitSafetyBuffer(v float64) *GroupUpsert {
 	u.Add(group.FieldProfitSafetyBuffer, v)
+	return u
+}
+
+// SetCacheHitRateAdjustment sets the "cache_hit_rate_adjustment" field.
+func (u *GroupUpsert) SetCacheHitRateAdjustment(v float64) *GroupUpsert {
+	u.Set(group.FieldCacheHitRateAdjustment, v)
+	return u
+}
+
+// UpdateCacheHitRateAdjustment sets the "cache_hit_rate_adjustment" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateCacheHitRateAdjustment() *GroupUpsert {
+	u.SetExcluded(group.FieldCacheHitRateAdjustment)
+	return u
+}
+
+// AddCacheHitRateAdjustment adds v to the "cache_hit_rate_adjustment" field.
+func (u *GroupUpsert) AddCacheHitRateAdjustment(v float64) *GroupUpsert {
+	u.Add(group.FieldCacheHitRateAdjustment, v)
 	return u
 }
 
@@ -4666,6 +4709,27 @@ func (u *GroupUpsertOne) AddProfitSafetyBuffer(v float64) *GroupUpsertOne {
 func (u *GroupUpsertOne) UpdateProfitSafetyBuffer() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateProfitSafetyBuffer()
+	})
+}
+
+// SetCacheHitRateAdjustment sets the "cache_hit_rate_adjustment" field.
+func (u *GroupUpsertOne) SetCacheHitRateAdjustment(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetCacheHitRateAdjustment(v)
+	})
+}
+
+// AddCacheHitRateAdjustment adds v to the "cache_hit_rate_adjustment" field.
+func (u *GroupUpsertOne) AddCacheHitRateAdjustment(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddCacheHitRateAdjustment(v)
+	})
+}
+
+// UpdateCacheHitRateAdjustment sets the "cache_hit_rate_adjustment" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateCacheHitRateAdjustment() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateCacheHitRateAdjustment()
 	})
 }
 
@@ -6280,6 +6344,27 @@ func (u *GroupUpsertBulk) AddProfitSafetyBuffer(v float64) *GroupUpsertBulk {
 func (u *GroupUpsertBulk) UpdateProfitSafetyBuffer() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateProfitSafetyBuffer()
+	})
+}
+
+// SetCacheHitRateAdjustment sets the "cache_hit_rate_adjustment" field.
+func (u *GroupUpsertBulk) SetCacheHitRateAdjustment(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetCacheHitRateAdjustment(v)
+	})
+}
+
+// AddCacheHitRateAdjustment adds v to the "cache_hit_rate_adjustment" field.
+func (u *GroupUpsertBulk) AddCacheHitRateAdjustment(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddCacheHitRateAdjustment(v)
+	})
+}
+
+// UpdateCacheHitRateAdjustment sets the "cache_hit_rate_adjustment" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateCacheHitRateAdjustment() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateCacheHitRateAdjustment()
 	})
 }
 

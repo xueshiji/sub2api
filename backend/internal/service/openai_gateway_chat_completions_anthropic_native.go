@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/cachehitadj"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/gin-gonic/gin"
@@ -299,6 +300,9 @@ func (s *OpenAIGatewayService) handleCCBufferedFromNativeAnthropic(
 	c.Writer.Header().Set("Content-Type", "application/json; charset=utf-8")
 	if respBytes, err := json.Marshal(ccResp); err == nil {
 		respBytes = reverseToolNamesIfPresent(c, respBytes)
+		if cacheAdj := cacheHitRateAdjustmentFromGin(c); cacheAdj > 0 {
+			respBytes = cachehitadj.RewriteOpenAIUsageJSON(respBytes, cacheAdj)
+		}
 		c.Data(http.StatusOK, "application/json; charset=utf-8", respBytes)
 	} else {
 		c.JSON(http.StatusOK, ccResp)
@@ -412,6 +416,9 @@ func (s *OpenAIGatewayService) handleCCStreamingFromNativeAnthropic(
 			return false
 		}
 		out := reverseToolNamesIfPresentString(c, sse)
+		if cacheAdj := cacheHitRateAdjustmentFromGin(c); cacheAdj > 0 {
+			out = rewriteSSEBlock(out, cacheAdj, cachehitadj.RewriteOpenAIUsageJSON)
+		}
 		if _, err := fmt.Fprint(c.Writer, out); err != nil {
 			clientDisconnected = true
 			return false

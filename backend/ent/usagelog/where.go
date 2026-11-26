@@ -290,6 +290,21 @@ func CacheTTLOverridden(v bool) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldEQ(FieldCacheTTLOverridden, v))
 }
 
+// CacheHitRateAdjustment applies equality check predicate on the "cache_hit_rate_adjustment" field. It's identical to CacheHitRateAdjustmentEQ.
+func CacheHitRateAdjustment(v float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldCacheHitRateAdjustment, v))
+}
+
+// CacheReadTokensReduction applies equality check predicate on the "cache_read_tokens_reduction" field. It's identical to CacheReadTokensReductionEQ.
+func CacheReadTokensReduction(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldCacheReadTokensReduction, v))
+}
+
+// TotalCostBeforeAdjustment applies equality check predicate on the "total_cost_before_adjustment" field. It's identical to TotalCostBeforeAdjustmentEQ.
+func TotalCostBeforeAdjustment(v float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldTotalCostBeforeAdjustment, v))
+}
+
 // CreatedAt applies equality check predicate on the "created_at" field. It's identical to CreatedAtEQ.
 func CreatedAt(v time.Time) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldEQ(FieldCreatedAt, v))
@@ -2548,6 +2563,136 @@ func CacheTTLOverriddenEQ(v bool) predicate.UsageLog {
 // CacheTTLOverriddenNEQ applies the NEQ predicate on the "cache_ttl_overridden" field.
 func CacheTTLOverriddenNEQ(v bool) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldNEQ(FieldCacheTTLOverridden, v))
+}
+
+// CacheHitRateAdjustmentEQ applies the EQ predicate on the "cache_hit_rate_adjustment" field.
+func CacheHitRateAdjustmentEQ(v float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldCacheHitRateAdjustment, v))
+}
+
+// CacheHitRateAdjustmentNEQ applies the NEQ predicate on the "cache_hit_rate_adjustment" field.
+func CacheHitRateAdjustmentNEQ(v float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldCacheHitRateAdjustment, v))
+}
+
+// CacheHitRateAdjustmentIn applies the In predicate on the "cache_hit_rate_adjustment" field.
+func CacheHitRateAdjustmentIn(vs ...float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIn(FieldCacheHitRateAdjustment, vs...))
+}
+
+// CacheHitRateAdjustmentNotIn applies the NotIn predicate on the "cache_hit_rate_adjustment" field.
+func CacheHitRateAdjustmentNotIn(vs ...float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotIn(FieldCacheHitRateAdjustment, vs...))
+}
+
+// CacheHitRateAdjustmentGT applies the GT predicate on the "cache_hit_rate_adjustment" field.
+func CacheHitRateAdjustmentGT(v float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGT(FieldCacheHitRateAdjustment, v))
+}
+
+// CacheHitRateAdjustmentGTE applies the GTE predicate on the "cache_hit_rate_adjustment" field.
+func CacheHitRateAdjustmentGTE(v float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGTE(FieldCacheHitRateAdjustment, v))
+}
+
+// CacheHitRateAdjustmentLT applies the LT predicate on the "cache_hit_rate_adjustment" field.
+func CacheHitRateAdjustmentLT(v float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLT(FieldCacheHitRateAdjustment, v))
+}
+
+// CacheHitRateAdjustmentLTE applies the LTE predicate on the "cache_hit_rate_adjustment" field.
+func CacheHitRateAdjustmentLTE(v float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLTE(FieldCacheHitRateAdjustment, v))
+}
+
+// CacheReadTokensReductionEQ applies the EQ predicate on the "cache_read_tokens_reduction" field.
+func CacheReadTokensReductionEQ(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldCacheReadTokensReduction, v))
+}
+
+// CacheReadTokensReductionNEQ applies the NEQ predicate on the "cache_read_tokens_reduction" field.
+func CacheReadTokensReductionNEQ(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldCacheReadTokensReduction, v))
+}
+
+// CacheReadTokensReductionIn applies the In predicate on the "cache_read_tokens_reduction" field.
+func CacheReadTokensReductionIn(vs ...int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIn(FieldCacheReadTokensReduction, vs...))
+}
+
+// CacheReadTokensReductionNotIn applies the NotIn predicate on the "cache_read_tokens_reduction" field.
+func CacheReadTokensReductionNotIn(vs ...int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotIn(FieldCacheReadTokensReduction, vs...))
+}
+
+// CacheReadTokensReductionGT applies the GT predicate on the "cache_read_tokens_reduction" field.
+func CacheReadTokensReductionGT(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGT(FieldCacheReadTokensReduction, v))
+}
+
+// CacheReadTokensReductionGTE applies the GTE predicate on the "cache_read_tokens_reduction" field.
+func CacheReadTokensReductionGTE(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGTE(FieldCacheReadTokensReduction, v))
+}
+
+// CacheReadTokensReductionLT applies the LT predicate on the "cache_read_tokens_reduction" field.
+func CacheReadTokensReductionLT(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLT(FieldCacheReadTokensReduction, v))
+}
+
+// CacheReadTokensReductionLTE applies the LTE predicate on the "cache_read_tokens_reduction" field.
+func CacheReadTokensReductionLTE(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLTE(FieldCacheReadTokensReduction, v))
+}
+
+// TotalCostBeforeAdjustmentEQ applies the EQ predicate on the "total_cost_before_adjustment" field.
+func TotalCostBeforeAdjustmentEQ(v float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldTotalCostBeforeAdjustment, v))
+}
+
+// TotalCostBeforeAdjustmentNEQ applies the NEQ predicate on the "total_cost_before_adjustment" field.
+func TotalCostBeforeAdjustmentNEQ(v float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldTotalCostBeforeAdjustment, v))
+}
+
+// TotalCostBeforeAdjustmentIn applies the In predicate on the "total_cost_before_adjustment" field.
+func TotalCostBeforeAdjustmentIn(vs ...float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIn(FieldTotalCostBeforeAdjustment, vs...))
+}
+
+// TotalCostBeforeAdjustmentNotIn applies the NotIn predicate on the "total_cost_before_adjustment" field.
+func TotalCostBeforeAdjustmentNotIn(vs ...float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotIn(FieldTotalCostBeforeAdjustment, vs...))
+}
+
+// TotalCostBeforeAdjustmentGT applies the GT predicate on the "total_cost_before_adjustment" field.
+func TotalCostBeforeAdjustmentGT(v float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGT(FieldTotalCostBeforeAdjustment, v))
+}
+
+// TotalCostBeforeAdjustmentGTE applies the GTE predicate on the "total_cost_before_adjustment" field.
+func TotalCostBeforeAdjustmentGTE(v float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGTE(FieldTotalCostBeforeAdjustment, v))
+}
+
+// TotalCostBeforeAdjustmentLT applies the LT predicate on the "total_cost_before_adjustment" field.
+func TotalCostBeforeAdjustmentLT(v float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLT(FieldTotalCostBeforeAdjustment, v))
+}
+
+// TotalCostBeforeAdjustmentLTE applies the LTE predicate on the "total_cost_before_adjustment" field.
+func TotalCostBeforeAdjustmentLTE(v float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLTE(FieldTotalCostBeforeAdjustment, v))
+}
+
+// TotalCostBeforeAdjustmentIsNil applies the IsNil predicate on the "total_cost_before_adjustment" field.
+func TotalCostBeforeAdjustmentIsNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIsNull(FieldTotalCostBeforeAdjustment))
+}
+
+// TotalCostBeforeAdjustmentNotNil applies the NotNil predicate on the "total_cost_before_adjustment" field.
+func TotalCostBeforeAdjustmentNotNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotNull(FieldTotalCostBeforeAdjustment))
 }
 
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.

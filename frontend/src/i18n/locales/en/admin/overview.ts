@@ -1163,6 +1163,11 @@ export default {
         bufferRangeError: 'Safety buffer must be between 0 and 99.99',
         sumTooHigh: 'Min gross margin plus safety buffer must be less than 100%, otherwise every account would be excluded'
       },
+      cacheHitAdjustment: {
+        label: 'Cache hit rate adjustment (%)',
+        hint: '0% ~ 10% (0 = disabled). When true prompt cache hit rate > 10%, shifts round(total_prompt_tokens × ratio) from cache read tokens to input tokens for user billing, usage history, and live API responses. Account cost billing still uses true usage.',
+        rangeError: 'Cache hit rate adjustment must be between 0% and 10%'
+      },
       modelAllowlist: {
         title: 'Model Allowlist',
         hint: 'When enabled, models outside the allowlist are rejected with 404 model_not_found, and model listing endpoints only show allowlisted models. Entries support exact model IDs and * wildcards anywhere (e.g., gpt-*-codex). Note: Claude Code probes with haiku-family models for titles/summaries and /messages/count_tokens is also allowlist-controlled, so make sure the small models you need are selected too.',

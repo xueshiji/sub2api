@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/cachehitadj"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
@@ -277,7 +278,7 @@ func (s *GeminiMessagesCompatService) forwardClaudeBodyAsChatCompletions(
 		if err != nil {
 			return nil, s.writeChatCompletionsError(c, http.StatusBadGateway, "upstream_error", "Failed to parse upstream response")
 		}
-		c.JSON(http.StatusOK, chatResp)
+		writeChatCompletionsResponseWithClientUsage(c, chatResp, usageObj2)
 		usage = usageObj2
 	} else {
 		usageResp, err := s.handleChatCompletionsNonStreamingResponseFromGemini(c, resp, originalModel, account.Type == AccountTypeOAuth)
@@ -492,8 +493,19 @@ func (s *GeminiMessagesCompatService) handleChatCompletionsNonStreamingResponseF
 	}
 
 	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
-	c.JSON(http.StatusOK, chatResp)
+	writeChatCompletionsResponseWithClientUsage(c, chatResp, usage)
 	return usage, nil
+}
+
+// writeChatCompletionsResponseWithClientUsage 写出 Gemini 转换出的 Chat Completions 非流式响应。
+// usage 不带缓存字段时通用改写不生效，比例大于 0 时 prompt_tokens 取计费口径（修正后）的未缓存输入 token 数。
+func writeChatCompletionsResponseWithClientUsage(c *gin.Context, chatResp *apicompat.ChatCompletionsResponse, usage *ClaudeUsage) {
+	cacheAdj := cacheHitRateAdjustmentFromGin(c)
+	if cacheAdj > 0 && chatResp.Usage != nil && (chatResp.Usage.PromptTokensDetails == nil || chatResp.Usage.PromptTokensDetails.CachedTokens == 0) {
+		chatResp.Usage.PromptTokens = cachehitadj.Adjust(usage.InputTokens, usage.CacheReadInputTokens, usage.CacheCreationInputTokens, cacheAdj).InputTokens
+		chatResp.Usage.TotalTokens = chatResp.Usage.PromptTokens + chatResp.Usage.CompletionTokens
+	}
+	writeJSONWithUsageRewrite(c, http.StatusOK, chatResp, cacheAdj, cachehitadj.RewriteOpenAIUsageJSON)
 }
 
 func geminiResponseToChatCompletions(
@@ -561,11 +573,13 @@ func (s *GeminiMessagesCompatService) handleChatCompletionsStreamingResponseFrom
 		return &geminiStreamResult{usage: &usage, firstTokenMs: firstTokenMs, clientDisconnect: clientDisconnect, finished: finishReason != ""}
 	}
 
+	cacheAdj := cacheHitRateAdjustmentFromGin(c)
 	writeChatChunk := func(chunk apicompat.ChatCompletionsChunk) bool {
 		sse, err := apicompat.ChatChunkToSSE(chunk)
 		if err != nil {
 			return false
 		}
+		sse = rewriteSSEBlock(sse, cacheAdj, cachehitadj.RewriteOpenAIUsageJSON)
 		if _, err := io.WriteString(c.Writer, sse); err != nil {
 			clientDisconnect = true
 			return true

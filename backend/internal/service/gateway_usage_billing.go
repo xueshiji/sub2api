@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/cachehitadj"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
@@ -82,6 +83,7 @@ type postUsageBillingParams struct {
 	RequestPayloadHash    string
 	IsSubscriptionBill    bool
 	AccountRateMultiplier float64
+	AccountRawTotalCost   *float64 // 命中率修正生效时保留真实总成本（倍率前），用于账号配额核算
 	APIKeyService         APIKeyQuotaUpdater
 	Platform              string // 来自 APIKey 关联 Group 的平台标识
 	// SimpleModeKeyRateLimitOnly opts the request into the simple-mode billing
@@ -131,6 +133,19 @@ func QuotaPlatform(ctx context.Context, apiKey *APIKey) string {
 	return platform
 }
 
+func (p *postUsageBillingParams) accountQuotaBaseCost() float64 {
+	if p == nil {
+		return 0
+	}
+	if p.AccountRawTotalCost != nil {
+		return *p.AccountRawTotalCost
+	}
+	if p.Cost != nil {
+		return p.Cost.TotalCost
+	}
+	return 0
+}
+
 func (p *postUsageBillingParams) shouldDeductAPIKeyQuota() bool {
 	return p.Cost.ActualCost > 0 && p.APIKey.Quota > 0 && p.APIKeyService != nil
 }
@@ -140,7 +155,7 @@ func (p *postUsageBillingParams) shouldUpdateRateLimits() bool {
 }
 
 func (p *postUsageBillingParams) shouldUpdateAccountQuota() bool {
-	return p.Cost.TotalCost > 0 && p.Account.SupportsAccountQuota() && p.Account.HasAnyQuotaLimit()
+	return p.accountQuotaBaseCost() > 0 && p.Account.SupportsAccountQuota() && p.Account.HasAnyQuotaLimit()
 }
 
 // postUsageBilling is the legacy fallback billing path used when the unified
@@ -189,7 +204,7 @@ func postUsageBilling(ctx context.Context, p *postUsageBillingParams, deps *bill
 	}
 
 	if p.shouldUpdateAccountQuota() {
-		accountCost := cost.TotalCost * p.AccountRateMultiplier
+		accountCost := p.accountQuotaBaseCost() * p.AccountRateMultiplier
 		if err := deps.accountRepo.IncrementQuotaUsed(billingCtx, p.Account.ID, accountCost); err != nil {
 			slog.Error("increment account quota used failed", "account_id", p.Account.ID, "cost", accountCost, "error", err)
 		}
@@ -358,7 +373,7 @@ func buildUsageBillingCommand(requestID string, usageLog *UsageLog, p *postUsage
 		cmd.APIKeyRateLimitCost = p.Cost.ActualCost
 	}
 	if p.shouldUpdateAccountQuota() {
-		cmd.AccountQuotaCost = p.Cost.TotalCost * p.AccountRateMultiplier
+		cmd.AccountQuotaCost = p.accountQuotaBaseCost() * p.AccountRateMultiplier
 		cmd.AccountQuotaHasDailyLimit = p.Account.GetQuotaDailyLimit() > 0
 		cmd.AccountQuotaHasWeeklyLimit = p.Account.GetQuotaWeeklyLimit() > 0
 	}
@@ -591,9 +606,9 @@ func notifyAccountQuota(ctx context.Context, p *postUsageBillingParams, deps *bi
 			slog.Error("panic in notifyAccountQuota", "recover", r)
 		}
 	}()
-	if p.Cost.TotalCost <= 0 || p.Account == nil || !p.Account.SupportsAccountQuota() || !p.Account.HasAnyQuotaLimit() || deps.balanceNotifyService == nil {
+	if p.accountQuotaBaseCost() <= 0 || p.Account == nil || !p.Account.SupportsAccountQuota() || !p.Account.HasAnyQuotaLimit() || deps.balanceNotifyService == nil {
 		slog.Debug("notifyAccountQuota: skipped",
-			"total_cost", p.Cost.TotalCost,
+			"total_cost", p.accountQuotaBaseCost(),
 			"account_nil", p.Account == nil,
 			"supports_account_quota", p.Account != nil && p.Account.SupportsAccountQuota(),
 			"has_quota_limit", p.Account != nil && p.Account.HasAnyQuotaLimit(),
@@ -601,7 +616,7 @@ func notifyAccountQuota(ctx context.Context, p *postUsageBillingParams, deps *bi
 		)
 		return
 	}
-	accountCost := p.Cost.TotalCost * p.AccountRateMultiplier
+	accountCost := p.accountQuotaBaseCost() * p.AccountRateMultiplier
 	var quotaState *AccountQuotaState
 	if result != nil {
 		quotaState = result.QuotaState
@@ -843,9 +858,24 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 		cacheTTLOverridden = (result.Usage.CacheCreation5mTokens + result.Usage.CacheCreation1hTokens) > 0
 	}
 
+	rawUsage := result.Usage
+	adj := cachehitadj.Adjust(
+		rawUsage.InputTokens,
+		rawUsage.CacheReadInputTokens,
+		rawUsage.CacheCreationInputTokens,
+		CacheHitRateAdjustmentFromGroup(apiKey.Group),
+	)
+	billingResult := result
+	if adj.Applied {
+		cloned := *result
+		cloned.Usage.InputTokens = adj.InputTokens
+		cloned.Usage.CacheReadInputTokens = adj.CacheReadTokens
+		billingResult = &cloned
+	}
+
 	baseMultiplier, imageMultiplier, pricingAt := s.recordUsageMultipliers(ctx, apiKey, user, input.PricingAt)
-	billingModel := s.recordUsageBillingModel(ctx, apiKey, result, input.ChannelUsageFields)
-	cacheStorageCost := s.cacheStorageCost(result, billingModel)
+	billingModel := s.recordUsageBillingModel(ctx, apiKey, billingResult, input.ChannelUsageFields)
+	cacheStorageCost := s.cacheStorageCost(billingResult, billingModel)
 	// 分模型高峰倍率按计费模型匹配，须在 billingModel 敲定后计算。
 	multiplier := baseMultiplier * groupPeakFactor(apiKey, billingModel, pricingAt)
 
@@ -855,29 +885,43 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 		requestedModel = input.OriginalModel
 	}
 
-	// 计算费用
-	cost := s.calculateRecordUsageCost(ctx, result, apiKey, billingModel, multiplier, imageMultiplier, pricingAt)
-	// response_model：按上游成功响应自报的模型计费（渠道显式开启才生效）。
-	// 采纳条件见 responseModelBillingDeclaration + hasIdentifiedResponseModelPricing
-	// + responseModelBillingAdoptable。任一条件不满足都静默回落基线，即开启本模式前的
-	// 既有行为。响应模型与基线同名时直接跳过：重算必然同价，白跑一次定价解析。
-	if responseModel := responseModelBillingDeclaration(
-		input.BillingModelSource,
-		result.UpstreamResponseModel,
-		result.UpstreamResponseModelConflict,
-		result.ImageCount > 0 || result.AudioUsage != nil || result.SearchCount > 0 || result.CacheStorageTokenHours > 0,
-	); responseModel != "" && !strings.EqualFold(responseModel, strings.TrimSpace(billingModel)) {
-		if identified, responseChannelPriced := s.hasIdentifiedResponseModelPricing(ctx, responseModel, apiKey); identified {
-			// 分模型高峰倍率随计费模型变化，重定价时按 responseModel 重算 peak 因子。
-			responseMultiplier := baseMultiplier * groupPeakFactor(apiKey, responseModel, pricingAt)
-			responseCost := s.calculateRecordUsageCost(ctx, result, apiKey, responseModel, responseMultiplier, imageMultiplier, pricingAt)
-			baselineChannelPriced := s.resolveChannelPricing(ctx, billingModel, apiKey) != nil
-			if responseModelBillingAdoptable(cost, responseCost, baselineChannelPriced, responseChannelPriced) {
-				// billingModel 到此为止只是定价查表的入参，后续流程只消费 cost，
-				// 因此这里不改写它，改由日志记录实际生效的计费基准。
-				logResponseModelBillingApplied("service.gateway", account, result.RequestID, billingModel, responseModel, cost, responseCost)
-				cost = responseCost
+	// 返回成本及实际采用的计费模型与倍率（采纳响应模型时为响应模型及其倍率）。
+	calculateCostWithResponseModel := func(evalResult *ForwardResult) (*CostBreakdown, string, float64) {
+		evalCost := s.calculateRecordUsageCost(ctx, evalResult, apiKey, billingModel, multiplier, imageMultiplier, pricingAt)
+		costModel, costMultiplier := billingModel, multiplier
+		// response_model：按上游成功响应自报的模型计费（渠道显式开启才生效）。
+		// 采纳条件见 responseModelBillingDeclaration + hasIdentifiedResponseModelPricing
+		// + responseModelBillingAdoptable。任一条件不满足都静默回落基线，即开启本模式前的
+		// 既有行为。响应模型与基线同名时直接跳过：重算必然同价，白跑一次定价解析。
+		if responseModel := responseModelBillingDeclaration(
+			input.BillingModelSource,
+			evalResult.UpstreamResponseModel,
+			evalResult.UpstreamResponseModelConflict,
+			evalResult.ImageCount > 0 || evalResult.AudioUsage != nil || evalResult.SearchCount > 0 || evalResult.CacheStorageTokenHours > 0,
+		); responseModel != "" && !strings.EqualFold(responseModel, strings.TrimSpace(billingModel)) {
+			if identified, responseChannelPriced := s.hasIdentifiedResponseModelPricing(ctx, responseModel, apiKey); identified {
+				// 分模型高峰倍率随计费模型变化，重定价时按 responseModel 重算 peak 因子。
+				responseMultiplier := baseMultiplier * groupPeakFactor(apiKey, responseModel, pricingAt)
+				responseCost := s.calculateRecordUsageCost(ctx, evalResult, apiKey, responseModel, responseMultiplier, imageMultiplier, pricingAt)
+				baselineChannelPriced := s.resolveChannelPricing(ctx, billingModel, apiKey) != nil
+				if responseModelBillingAdoptable(evalCost, responseCost, baselineChannelPriced, responseChannelPriced) {
+					// 不改写外层 billingModel：采纳的计费基准只经返回值与日志带出。
+					logResponseModelBillingApplied("service.gateway", account, evalResult.RequestID, billingModel, responseModel, evalCost, responseCost)
+					evalCost = responseCost
+					costModel, costMultiplier = responseModel, responseMultiplier
+				}
 			}
+		}
+		return evalCost, costModel, costMultiplier
+	}
+
+	// 计算费用（用户账单使用修正后 token）
+	cost, costModel, costMultiplier := calculateCostWithResponseModel(billingResult)
+	rawTotalCost := cost.TotalCost
+	if adj.Applied {
+		// 真实成本沿用用户账单采纳的计费模型与倍率。
+		if rawCost := s.calculateRecordUsageCost(ctx, result, apiKey, costModel, costMultiplier, imageMultiplier, pricingAt); rawCost != nil {
+			rawTotalCost = rawCost.TotalCost
 		}
 	}
 
@@ -888,12 +932,18 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 		billingType = BillingTypeSubscription
 	}
 
-	// 创建使用日志
+	// 创建使用日志（主字段写入修正后口径；管理员审计字段记录修正比例与扣减量）
 	accountRateMultiplier := account.BillingRateMultiplier()
-	usageLog := s.buildRecordUsageLog(ctx, input, result, apiKey, user, account, subscription,
+	usageLog := s.buildRecordUsageLog(ctx, input, billingResult, apiKey, user, account, subscription,
 		requestedModel, multiplier, imageMultiplier, accountRateMultiplier, billingType, cacheTTLOverridden, cost)
+	usageLog.CacheHitRateAdjustment = adj.Adjustment
+	usageLog.CacheReadTokensReduction = adj.Reduction
+	if adj.Applied {
+		before := rawTotalCost
+		usageLog.TotalCostBeforeAdjustment = &before
+	}
 
-	// 计算账号统计定价费用（使用最终上游模型匹配自定义规则）。纯存储费不是一次模型请求，
+	// 计算账号统计定价费用（使用真实 token 与真实 rawTotalCost）。纯存储费不是一次模型请求，
 	// 账号统计成本回落 total_cost（官方存储价）。
 	if apiKey.GroupID != nil && !isCacheStorageOnlyResult(result) {
 		applyAccountStatsCost(ctx, usageLog, s.channelService, s.billingService,
@@ -901,16 +951,22 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 			// Anthropic's input_tokens excludes cache_read and cache_creation (billed separately);
 			// OpenAI gateway uses actualInputTokens which also excludes cache_read for the same reason.
 			UsageTokens{
-				InputTokens:         result.Usage.InputTokens,
-				OutputTokens:        result.Usage.OutputTokens,
-				CacheCreationTokens: result.Usage.CacheCreationInputTokens,
-				CacheReadTokens:     result.Usage.CacheReadInputTokens,
-				ImageOutputTokens:   result.Usage.ImageOutputTokens,
+				InputTokens:         rawUsage.InputTokens,
+				OutputTokens:        rawUsage.OutputTokens,
+				CacheCreationTokens: rawUsage.CacheCreationInputTokens,
+				CacheReadTokens:     rawUsage.CacheReadInputTokens,
+				ImageOutputTokens:   rawUsage.ImageOutputTokens,
 			},
-			cost.TotalCost-cacheStorageCost, pricingAt,
+			rawTotalCost-cacheStorageCost, pricingAt,
 			accountStatsLongContextPricingEnabled(nil), result.upstreamPriceFactor(),
 		)
 		addCacheStorageToAccountStatsCost(usageLog, cacheStorageCost)
+	}
+	// SQL 聚合用 COALESCE(account_stats_cost, total_cost)；修正生效且无独立统计价时，
+	// 显式写入真实 rawTotalCost，防止回落到修正后的 total_cost。
+	if adj.Applied && usageLog.AccountStatsCost == nil && !isCacheStorageOnlyResult(result) {
+		rc := rawTotalCost
+		usageLog.AccountStatsCost = &rc
 	}
 
 	simpleModeKeyRateLimitOnly := simpleModeKeyRateLimitBillingEnabled(s.cfg, apiKey)
@@ -945,6 +1001,10 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 		Platform:                   quotaPlatform,
 		SimpleModeKeyRateLimitOnly: simpleModeKeyRateLimitOnly,
 		EffectiveTokenMultiplier:   multiplier,
+	}
+	if adj.Applied {
+		rc := rawTotalCost
+		billingParams.AccountRawTotalCost = &rc
 	}
 	billingParams.SubscriptionTokens = computeSubscriptionTokens(usageLog, billingParams)
 	_, billingErr := applyUsageBilling(ctx, requestID, usageLog, billingParams, s.billingDeps(), s.usageBillingRepo)
@@ -1045,10 +1105,24 @@ func (s *GatewayService) QuoteUsageCost(ctx context.Context, input *RecordUsageI
 	if user == nil {
 		user = input.APIKey.User
 	}
+	evalResult := input.Result
+	if evalResult != nil && input.APIKey != nil {
+		if adj := cachehitadj.Adjust(
+			evalResult.Usage.InputTokens,
+			evalResult.Usage.CacheReadInputTokens,
+			evalResult.Usage.CacheCreationInputTokens,
+			CacheHitRateAdjustmentFromGroup(input.APIKey.Group),
+		); adj.Applied {
+			cloned := *evalResult
+			cloned.Usage.InputTokens = adj.InputTokens
+			cloned.Usage.CacheReadInputTokens = adj.CacheReadTokens
+			evalResult = &cloned
+		}
+	}
 	baseMultiplier, imageMultiplier, pricingAt := s.recordUsageMultipliers(ctx, input.APIKey, user, input.PricingAt)
-	billingModel := s.recordUsageBillingModel(ctx, input.APIKey, input.Result, input.ChannelUsageFields)
+	billingModel := s.recordUsageBillingModel(ctx, input.APIKey, evalResult, input.ChannelUsageFields)
 	multiplier := baseMultiplier * groupPeakFactor(input.APIKey, billingModel, pricingAt)
-	cost := s.calculateRecordUsageCost(ctx, input.Result, input.APIKey, billingModel, multiplier, imageMultiplier, pricingAt)
+	cost := s.calculateRecordUsageCost(ctx, evalResult, input.APIKey, billingModel, multiplier, imageMultiplier, pricingAt)
 	if cost == nil {
 		return 0
 	}

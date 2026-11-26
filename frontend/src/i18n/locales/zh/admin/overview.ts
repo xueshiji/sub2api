@@ -1160,6 +1160,11 @@ export default {
         bufferRangeError: '安全缓冲应在 0 到 99.99 之间',
         sumTooHigh: '最低毛利率与安全缓冲之和必须小于 100%，否则将排除全部账号'
       },
+      cacheHitAdjustment: {
+        label: '缓存命中率修正（%）',
+        hint: '0% ~ 10%（设为 0% 不生效）。当真实缓存命中率大于 10% 时，从缓存读取扣减 round(总提示词 × 修正比例) 转入输入 Token，影响用户扣费、历史记录及实时响应，账号成本计费仍使用真实缓存命中率。',
+        rangeError: '缓存命中率修正必须在 0% 到 10% 之间'
+      },
       modelAllowlist: {
         title: '模型白名单',
         hint: '开启后，不在白名单中的模型会被拒绝（404 model_not_found），模型列表接口也只展示白名单内的模型。条目支持精确模型 ID 与任意位置的 * 通配（如 gpt-*-codex）。注意：Claude Code 会用 haiku 系小模型做标题/摘要等探测，/messages/count_tokens 同样受白名单控制，请一并勾选所需的小模型。',

@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/cachehitadj"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 
 	"github.com/gin-gonic/gin"
@@ -412,6 +413,11 @@ func (s *GatewayService) handleBedrockNonStreamingResponse(
 	body = transformBedrockInvocationMetrics(body)
 
 	usage := parseClaudeUsageFromResponseBody(body)
+
+	// 改写只作用于返回客户端的 body；usage 保持真实值供计费。
+	if cacheAdj := cacheHitRateAdjustmentFromContext(ctx); cacheAdj > 0 {
+		body = cachehitadj.RewriteAnthropicUsageJSON(body, "usage", cacheAdj)
+	}
 
 	c.Header("Content-Type", "application/json")
 	if v := resp.Header.Get("x-amzn-requestid"); v != "" {

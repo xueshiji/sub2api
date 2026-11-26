@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/cachehitadj"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/tidwall/gjson"
@@ -525,6 +526,7 @@ func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
 	}
 	inPartialEvent := false
 	clientModel := compositeClientModel(ctx, "")
+	cacheUsageRewriter := &cachehitadj.AnthropicStreamRewriter{}
 
 	for {
 		select {
@@ -591,6 +593,9 @@ func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
 				if rewritten, err := sjson.Set(data, "message.model", clientModel); err == nil {
 					line = "data: " + rewritten
 				}
+			}
+			if cacheAdj := cacheHitRateAdjustmentFromContext(ctx); cacheAdj > 0 {
+				line = rewriteSSEDataLine(line, cacheAdj, cacheUsageRewriter.Rewrite)
 			}
 
 			if !clientDisconnected {
@@ -795,12 +800,21 @@ func normalizeAnthropicCompatiblePromptUsage(usageNode gjson.Result, usage *Clau
 
 	if promptCacheMissTokens.Exists() {
 		usage.InputTokens = max(int(promptCacheMissTokens.Int()), 0)
-	} else {
+	} else if promptTokens.Exists() && promptTokens.Int() > 0 {
 		usage.InputTokens = max(int(promptTokens.Int())-cacheReadTokens-cacheCreationTokens, 0)
 	}
 	usage.CacheReadInputTokens = cacheReadTokens
 	usage.CacheCreationInputTokens = cacheCreationTokens
 	return true
+}
+
+// claudeUsageNode wraps a decoded usage object for normalizeAnthropicCompatiblePromptUsage.
+func claudeUsageNode(usageObj map[string]any) gjson.Result {
+	raw, err := json.Marshal(usageObj)
+	if err != nil {
+		return gjson.Result{}
+	}
+	return gjson.ParseBytes(raw)
 }
 
 func parseClaudeUsageFromResponseBody(body []byte) *ClaudeUsage {
@@ -929,6 +943,9 @@ func (s *GatewayService) handleNonStreamingResponseAnthropicAPIKeyPassthrough(
 	}
 	body = restoreCompositeClientModel(ctx, body)
 	body = reverseToolNamesIfPresent(c, body)
+	if cacheAdj := cacheHitRateAdjustmentFromContext(ctx); cacheAdj > 0 {
+		body = cachehitadj.RewriteAnthropicUsageJSON(body, "usage", cacheAdj)
+	}
 	c.Data(resp.StatusCode, contentType, body)
 	return usage, nil
 }

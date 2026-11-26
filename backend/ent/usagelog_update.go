@@ -989,6 +989,75 @@ func (_u *UsageLogUpdate) SetNillableCacheTTLOverridden(v *bool) *UsageLogUpdate
 	return _u
 }
 
+// SetCacheHitRateAdjustment sets the "cache_hit_rate_adjustment" field.
+func (_u *UsageLogUpdate) SetCacheHitRateAdjustment(v float64) *UsageLogUpdate {
+	_u.mutation.ResetCacheHitRateAdjustment()
+	_u.mutation.SetCacheHitRateAdjustment(v)
+	return _u
+}
+
+// SetNillableCacheHitRateAdjustment sets the "cache_hit_rate_adjustment" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableCacheHitRateAdjustment(v *float64) *UsageLogUpdate {
+	if v != nil {
+		_u.SetCacheHitRateAdjustment(*v)
+	}
+	return _u
+}
+
+// AddCacheHitRateAdjustment adds value to the "cache_hit_rate_adjustment" field.
+func (_u *UsageLogUpdate) AddCacheHitRateAdjustment(v float64) *UsageLogUpdate {
+	_u.mutation.AddCacheHitRateAdjustment(v)
+	return _u
+}
+
+// SetCacheReadTokensReduction sets the "cache_read_tokens_reduction" field.
+func (_u *UsageLogUpdate) SetCacheReadTokensReduction(v int) *UsageLogUpdate {
+	_u.mutation.ResetCacheReadTokensReduction()
+	_u.mutation.SetCacheReadTokensReduction(v)
+	return _u
+}
+
+// SetNillableCacheReadTokensReduction sets the "cache_read_tokens_reduction" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableCacheReadTokensReduction(v *int) *UsageLogUpdate {
+	if v != nil {
+		_u.SetCacheReadTokensReduction(*v)
+	}
+	return _u
+}
+
+// AddCacheReadTokensReduction adds value to the "cache_read_tokens_reduction" field.
+func (_u *UsageLogUpdate) AddCacheReadTokensReduction(v int) *UsageLogUpdate {
+	_u.mutation.AddCacheReadTokensReduction(v)
+	return _u
+}
+
+// SetTotalCostBeforeAdjustment sets the "total_cost_before_adjustment" field.
+func (_u *UsageLogUpdate) SetTotalCostBeforeAdjustment(v float64) *UsageLogUpdate {
+	_u.mutation.ResetTotalCostBeforeAdjustment()
+	_u.mutation.SetTotalCostBeforeAdjustment(v)
+	return _u
+}
+
+// SetNillableTotalCostBeforeAdjustment sets the "total_cost_before_adjustment" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableTotalCostBeforeAdjustment(v *float64) *UsageLogUpdate {
+	if v != nil {
+		_u.SetTotalCostBeforeAdjustment(*v)
+	}
+	return _u
+}
+
+// AddTotalCostBeforeAdjustment adds value to the "total_cost_before_adjustment" field.
+func (_u *UsageLogUpdate) AddTotalCostBeforeAdjustment(v float64) *UsageLogUpdate {
+	_u.mutation.AddTotalCostBeforeAdjustment(v)
+	return _u
+}
+
+// ClearTotalCostBeforeAdjustment clears the value of the "total_cost_before_adjustment" field.
+func (_u *UsageLogUpdate) ClearTotalCostBeforeAdjustment() *UsageLogUpdate {
+	_u.mutation.ClearTotalCostBeforeAdjustment()
+	return _u
+}
+
 // SetUser sets the "user" edge to the User entity.
 func (_u *UsageLogUpdate) SetUser(v *User) *UsageLogUpdate {
 	return _u.SetUserID(v.ID)
@@ -1434,6 +1503,27 @@ func (_u *UsageLogUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.CacheTTLOverridden(); ok {
 		_spec.SetField(usagelog.FieldCacheTTLOverridden, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.CacheHitRateAdjustment(); ok {
+		_spec.SetField(usagelog.FieldCacheHitRateAdjustment, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedCacheHitRateAdjustment(); ok {
+		_spec.AddField(usagelog.FieldCacheHitRateAdjustment, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.CacheReadTokensReduction(); ok {
+		_spec.SetField(usagelog.FieldCacheReadTokensReduction, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedCacheReadTokensReduction(); ok {
+		_spec.AddField(usagelog.FieldCacheReadTokensReduction, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.TotalCostBeforeAdjustment(); ok {
+		_spec.SetField(usagelog.FieldTotalCostBeforeAdjustment, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedTotalCostBeforeAdjustment(); ok {
+		_spec.AddField(usagelog.FieldTotalCostBeforeAdjustment, field.TypeFloat64, value)
+	}
+	if _u.mutation.TotalCostBeforeAdjustmentCleared() {
+		_spec.ClearField(usagelog.FieldTotalCostBeforeAdjustment, field.TypeFloat64)
 	}
 	if _u.mutation.UserCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -2557,6 +2647,75 @@ func (_u *UsageLogUpdateOne) SetNillableCacheTTLOverridden(v *bool) *UsageLogUpd
 	return _u
 }
 
+// SetCacheHitRateAdjustment sets the "cache_hit_rate_adjustment" field.
+func (_u *UsageLogUpdateOne) SetCacheHitRateAdjustment(v float64) *UsageLogUpdateOne {
+	_u.mutation.ResetCacheHitRateAdjustment()
+	_u.mutation.SetCacheHitRateAdjustment(v)
+	return _u
+}
+
+// SetNillableCacheHitRateAdjustment sets the "cache_hit_rate_adjustment" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableCacheHitRateAdjustment(v *float64) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetCacheHitRateAdjustment(*v)
+	}
+	return _u
+}
+
+// AddCacheHitRateAdjustment adds value to the "cache_hit_rate_adjustment" field.
+func (_u *UsageLogUpdateOne) AddCacheHitRateAdjustment(v float64) *UsageLogUpdateOne {
+	_u.mutation.AddCacheHitRateAdjustment(v)
+	return _u
+}
+
+// SetCacheReadTokensReduction sets the "cache_read_tokens_reduction" field.
+func (_u *UsageLogUpdateOne) SetCacheReadTokensReduction(v int) *UsageLogUpdateOne {
+	_u.mutation.ResetCacheReadTokensReduction()
+	_u.mutation.SetCacheReadTokensReduction(v)
+	return _u
+}
+
+// SetNillableCacheReadTokensReduction sets the "cache_read_tokens_reduction" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableCacheReadTokensReduction(v *int) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetCacheReadTokensReduction(*v)
+	}
+	return _u
+}
+
+// AddCacheReadTokensReduction adds value to the "cache_read_tokens_reduction" field.
+func (_u *UsageLogUpdateOne) AddCacheReadTokensReduction(v int) *UsageLogUpdateOne {
+	_u.mutation.AddCacheReadTokensReduction(v)
+	return _u
+}
+
+// SetTotalCostBeforeAdjustment sets the "total_cost_before_adjustment" field.
+func (_u *UsageLogUpdateOne) SetTotalCostBeforeAdjustment(v float64) *UsageLogUpdateOne {
+	_u.mutation.ResetTotalCostBeforeAdjustment()
+	_u.mutation.SetTotalCostBeforeAdjustment(v)
+	return _u
+}
+
+// SetNillableTotalCostBeforeAdjustment sets the "total_cost_before_adjustment" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableTotalCostBeforeAdjustment(v *float64) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetTotalCostBeforeAdjustment(*v)
+	}
+	return _u
+}
+
+// AddTotalCostBeforeAdjustment adds value to the "total_cost_before_adjustment" field.
+func (_u *UsageLogUpdateOne) AddTotalCostBeforeAdjustment(v float64) *UsageLogUpdateOne {
+	_u.mutation.AddTotalCostBeforeAdjustment(v)
+	return _u
+}
+
+// ClearTotalCostBeforeAdjustment clears the value of the "total_cost_before_adjustment" field.
+func (_u *UsageLogUpdateOne) ClearTotalCostBeforeAdjustment() *UsageLogUpdateOne {
+	_u.mutation.ClearTotalCostBeforeAdjustment()
+	return _u
+}
+
 // SetUser sets the "user" edge to the User entity.
 func (_u *UsageLogUpdateOne) SetUser(v *User) *UsageLogUpdateOne {
 	return _u.SetUserID(v.ID)
@@ -3032,6 +3191,27 @@ func (_u *UsageLogUpdateOne) sqlSave(ctx context.Context) (_node *UsageLog, err 
 	}
 	if value, ok := _u.mutation.CacheTTLOverridden(); ok {
 		_spec.SetField(usagelog.FieldCacheTTLOverridden, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.CacheHitRateAdjustment(); ok {
+		_spec.SetField(usagelog.FieldCacheHitRateAdjustment, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedCacheHitRateAdjustment(); ok {
+		_spec.AddField(usagelog.FieldCacheHitRateAdjustment, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.CacheReadTokensReduction(); ok {
+		_spec.SetField(usagelog.FieldCacheReadTokensReduction, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedCacheReadTokensReduction(); ok {
+		_spec.AddField(usagelog.FieldCacheReadTokensReduction, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.TotalCostBeforeAdjustment(); ok {
+		_spec.SetField(usagelog.FieldTotalCostBeforeAdjustment, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedTotalCostBeforeAdjustment(); ok {
+		_spec.AddField(usagelog.FieldTotalCostBeforeAdjustment, field.TypeFloat64, value)
+	}
+	if _u.mutation.TotalCostBeforeAdjustmentCleared() {
+		_spec.ClearField(usagelog.FieldTotalCostBeforeAdjustment, field.TypeFloat64)
 	}
 	if _u.mutation.UserCleared() {
 		edge := &sqlgraph.EdgeSpec{
