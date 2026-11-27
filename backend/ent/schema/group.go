@@ -341,6 +341,19 @@ func (Group) Fields() []ent.Field {
 			SchemaType(map[string]string{dialect.Postgres: "decimal(10,4)"}).
 			Default(0).
 			Comment("缓存命中率修正比例（小数 0~0.10，如 0.05 表示扣减 5%）；真实缓存命中率大于 10% 时生效"),
+
+		// OpenAI 按量分组自动倍率配置（migration 254）
+		field.Bool("auto_rate_enabled").
+			Default(false).
+			Comment("是否启用基于分组下最高上游账号倍率的自动分组倍率"),
+		field.String("auto_rate_mode").
+			MaxLen(20).
+			Default("").
+			Comment("自动倍率加价模式：percentage（百分比）或 fixed（固定加价）"),
+		field.Float("auto_rate_value").
+			SchemaType(map[string]string{dialect.Postgres: "decimal(10,4)"}).
+			Default(0).
+			Comment("自动倍率加价值（percentage 存小数如 0.20，fixed 存固定加价值；>= 0）"),
 	}
 }
 

@@ -131,6 +131,7 @@ type SchedulerSnapshotService struct {
 	outboxRepo                   SchedulerOutboxRepository
 	accountRepo                  AccountRepository
 	groupRepo                    GroupRepository
+	groupAutoRateSyncer          GroupAutoRateSyncer
 	cfg                          *config.Config
 	stopCh                       chan struct{}
 	stopOnce                     sync.Once
@@ -175,6 +176,12 @@ func NewSchedulerSnapshotService(
 		cfg:           cfg,
 		stopCh:        make(chan struct{}),
 		fallbackLimit: newFallbackLimiter(maxQPS),
+	}
+}
+
+func (s *SchedulerSnapshotService) SetGroupAutoRateSyncer(syncer GroupAutoRateSyncer) {
+	if s != nil {
+		s.groupAutoRateSyncer = syncer
 	}
 }
 
@@ -661,7 +668,11 @@ func (s *SchedulerSnapshotService) handleBulkAccountEvent(ctx context.Context, p
 
 	// 缺失账户无法确定原平台，保留全平台重建以避免遗留旧快照。
 	if !allAccountsFound {
-		return s.rebuildByGroupIDs(ctx, rebuildGroupIDs, "account_bulk_change", seen)
+		if err := s.rebuildByGroupIDs(ctx, rebuildGroupIDs, "account_bulk_change", seen); err != nil {
+			return err
+		}
+		syncAutoRateBestEffortGroups(ctx, s.groupAutoRateSyncer, "scheduler_outbox_account_bulk", rebuildGroupIDs...)
+		return nil
 	}
 
 	platformGroupSets := make(map[string]map[int64]struct{}, len(accounts))
@@ -689,7 +700,11 @@ func (s *SchedulerSnapshotService) handleBulkAccountEvent(ctx context.Context, p
 			addPlatformGroups(PlatformAnthropic, accountGroupIDs)
 			addPlatformGroups(PlatformGemini, accountGroupIDs)
 		default:
-			return s.rebuildByGroupIDs(ctx, rebuildGroupIDs, "account_bulk_change", seen)
+			if err := s.rebuildByGroupIDs(ctx, rebuildGroupIDs, "account_bulk_change", seen); err != nil {
+				return err
+			}
+			syncAutoRateBestEffortGroups(ctx, s.groupAutoRateSyncer, "scheduler_outbox_account_bulk", rebuildGroupIDs...)
+			return nil
 		}
 	}
 
@@ -718,7 +733,11 @@ func (s *SchedulerSnapshotService) handleBulkAccountEvent(ctx context.Context, p
 		sort.Slice(platformGroupIDs, func(i, j int) bool { return platformGroupIDs[i] < platformGroupIDs[j] })
 		buckets = append(buckets, s.bucketsForPlatform(platform, platformGroupIDs, seen)...)
 	}
-	return s.rebuildBuckets(ctx, buckets, "account_bulk_change")
+	if err := s.rebuildBuckets(ctx, buckets, "account_bulk_change"); err != nil {
+		return err
+	}
+	syncAutoRateBestEffortGroups(ctx, s.groupAutoRateSyncer, "scheduler_outbox_account_bulk", rebuildGroupIDs...)
+	return nil
 }
 
 func (s *SchedulerSnapshotService) handleAccountEvent(ctx context.Context, accountID *int64, payload map[string]any, seen map[batchSeenKey]struct{}) error {
@@ -742,7 +761,11 @@ func (s *SchedulerSnapshotService) handleAccountEvent(ctx context.Context, accou
 					return err
 				}
 			}
-			return s.rebuildByGroupIDs(ctx, groupIDs, "account_miss", seen)
+			if err := s.rebuildByGroupIDs(ctx, groupIDs, "account_miss", seen); err != nil {
+				return err
+			}
+			syncAutoRateBestEffortGroups(ctx, s.groupAutoRateSyncer, "scheduler_outbox_account", groupIDs...)
+			return nil
 		}
 		return err
 	}
@@ -754,7 +777,11 @@ func (s *SchedulerSnapshotService) handleAccountEvent(ctx context.Context, accou
 	if len(groupIDs) == 0 {
 		groupIDs = account.GroupIDs
 	}
-	return s.rebuildByAccount(ctx, account, groupIDs, "account_change", seen)
+	if err := s.rebuildByAccount(ctx, account, groupIDs, "account_change", seen); err != nil {
+		return err
+	}
+	syncAutoRateBestEffortGroups(ctx, s.groupAutoRateSyncer, "scheduler_outbox_account", groupIDs...)
+	return nil
 }
 
 func (s *SchedulerSnapshotService) handleGroupEvent(ctx context.Context, groupID *int64, seen map[batchSeenKey]struct{}) error {

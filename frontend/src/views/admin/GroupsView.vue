@@ -311,10 +311,33 @@
             </div>
           </template>
 
-          <template #cell-rate_multiplier="{ value }">
-            <span class="text-sm text-gray-700 dark:text-gray-300"
-              >{{ value }}x</span
-            >
+          <template #cell-rate_multiplier="{ row, value }">
+            <div class="flex flex-wrap items-center gap-1.5">
+              <span class="text-sm text-gray-700 dark:text-gray-300"
+                >{{ value }}x</span
+              >
+              <span
+                v-if="row.auto_rate_enabled"
+                class="inline-flex items-center gap-1 rounded bg-sky-100 px-1.5 py-0.5 text-[11px] font-medium text-sky-700 dark:bg-sky-900/40 dark:text-sky-300"
+                :title="t('admin.groups.autoRate.title')"
+              >
+                <span>{{ t("admin.groups.autoRate.badge") }}</span>
+                <span>{{
+                  formatAutoRateRuleBadge(row.auto_rate_mode, row.auto_rate_value)
+                }}</span>
+              </span>
+              <span
+                v-if="
+                  row.auto_rate_enabled &&
+                  (row.active_account_count ?? 0) +
+                    (row.rate_limited_account_count ?? 0) ===
+                    0
+                "
+                class="text-[11px] text-amber-600 dark:text-amber-400"
+              >
+                {{ t("admin.groups.autoRate.waitingEligible") }}
+              </span>
+            </div>
           </template>
 
           <template #cell-is_exclusive="{ value }">
@@ -671,10 +694,23 @@
             step="0.001"
             min="0.001"
             required
-            class="input"
+            :disabled="isCreateRateMultiplierLocked"
+            class="input disabled:cursor-not-allowed disabled:bg-gray-100 dark:disabled:bg-dark-700"
             data-tour="group-form-multiplier"
           />
-          <p class="input-hint">{{ t("admin.groups.rateMultiplierHint") }}</p>
+          <p class="input-hint">
+            {{
+              createForm.auto_rate_enabled &&
+              isAutoRateGroupSupported(
+                createForm.platform,
+                createForm.subscription_type,
+              )
+                ? isCreateRateMultiplierLocked
+                  ? t("admin.groups.autoRate.lockedHint")
+                  : t("admin.groups.autoRate.initialRateHint")
+                : t("admin.groups.rateMultiplierHint")
+            }}
+          </p>
         </div>
         <div>
           <label class="input-label">{{ t("admin.groups.form.rpmLimit") }}</label>
@@ -1477,6 +1513,152 @@
                 placeholder="0"
                 :title="t('admin.groups.profitControl.safetyBufferHint')"
               />
+            </div>
+          </div>
+        </div>
+
+        <!-- 自动分组倍率（仅 OpenAI 按量计费分组） -->
+        <div
+          v-if="
+            isAutoRateGroupSupported(
+              createForm.platform,
+              createForm.subscription_type,
+            )
+          "
+          class="border-t pt-4"
+        >
+          <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+            <input
+              v-model="createForm.auto_rate_enabled"
+              type="checkbox"
+              class="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              data-testid="create-auto-rate-toggle"
+            />
+            <span>{{ t("admin.groups.autoRate.enable") }}</span>
+          </label>
+          <p class="mb-3 mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+            {{
+              createForm.auto_rate_enabled
+                ? t("admin.groups.autoRate.enabledHint")
+                : t("admin.groups.autoRate.disabledHint")
+            }}
+          </p>
+          <div v-if="createForm.auto_rate_enabled" class="space-y-3">
+            <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div>
+                <label class="input-label">{{
+                  t("admin.groups.autoRate.modeLabel")
+                }}</label>
+                <select
+                  v-model="createForm.auto_rate_mode"
+                  class="input"
+                  data-testid="create-auto-rate-mode"
+                >
+                  <option value="percentage">
+                    {{ t("admin.groups.autoRate.modePercentage") }}
+                  </option>
+                  <option value="fixed">
+                    {{ t("admin.groups.autoRate.modeFixed") }}
+                  </option>
+                </select>
+              </div>
+              <div v-if="createForm.auto_rate_mode === 'percentage'">
+                <label class="input-label">{{
+                  t("admin.groups.autoRate.percentageValueLabel")
+                }}</label>
+                <input
+                  v-model.number="createForm.auto_rate_percent"
+                  type="number"
+                  step="0.1"
+                  min="0"
+                  max="10000"
+                  class="input"
+                  placeholder="0"
+                  data-testid="create-auto-rate-percent"
+                />
+                <p class="input-hint">
+                  {{ t("admin.groups.autoRate.percentageValueHint") }}
+                </p>
+              </div>
+              <div v-else>
+                <label class="input-label">{{
+                  t("admin.groups.autoRate.fixedValueLabel")
+                }}</label>
+                <input
+                  v-model.number="createForm.auto_rate_fixed"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  max="100"
+                  class="input"
+                  placeholder="0"
+                  data-testid="create-auto-rate-fixed"
+                />
+                <p class="input-hint">
+                  {{ t("admin.groups.autoRate.fixedValueHint") }}
+                </p>
+              </div>
+            </div>
+            <div
+              class="rounded-lg border border-sky-200 bg-sky-50/70 p-3 text-xs text-sky-900 dark:border-sky-800/60 dark:bg-sky-950/30 dark:text-sky-200"
+              data-testid="create-auto-rate-preview"
+            >
+              <div class="mb-1 font-medium">
+                {{ t("admin.groups.autoRate.previewTitle") }}
+              </div>
+              <div v-if="createAutoRatePreviewLoading">
+                {{ t("admin.groups.autoRate.previewLoading") }}
+              </div>
+              <template v-else-if="createAutoRateComputedPreview">
+                <div class="space-y-1">
+                  <div>
+                    {{
+                      t("admin.groups.autoRate.previewEligibleCount", {
+                        count: createAutoRateComputedPreview.eligible_account_count,
+                      })
+                    }}
+                  </div>
+                  <div
+                    v-if="
+                      createAutoRateComputedPreview.max_account_rate !== null &&
+                      createAutoRateComputedPreview.max_account_rate !== undefined
+                    "
+                  >
+                    {{
+                      t("admin.groups.autoRate.previewMaxAccount", {
+                        name:
+                          createAutoRateComputedPreview.max_account_name ||
+                          `#${createAutoRateComputedPreview.max_account_id}`,
+                        rate: createAutoRateComputedPreview.max_account_rate,
+                      })
+                    }}
+                  </div>
+                  <div
+                    v-if="
+                      createAutoRateComputedPreview.status === 'ready' &&
+                      createAutoRateComputedPreview.computed_rate != null
+                    "
+                    class="font-semibold text-sky-700 dark:text-sky-300"
+                  >
+                    {{
+                      t("admin.groups.autoRate.previewComputedRate", {
+                        rate: createAutoRateComputedPreview.computed_rate,
+                      })
+                    }}
+                  </div>
+                  <div
+                    v-else-if="
+                      createAutoRateComputedPreview.status === 'out_of_range'
+                    "
+                    class="text-amber-700 dark:text-amber-300"
+                  >
+                    {{ t("admin.groups.autoRate.previewOutOfRange") }}
+                  </div>
+                  <div v-else class="text-amber-700 dark:text-amber-300">
+                    {{ t("admin.groups.autoRate.previewNoEligible") }}
+                  </div>
+                </div>
+              </template>
             </div>
           </div>
         </div>
@@ -2486,9 +2668,13 @@
             step="0.001"
             min="0.001"
             required
-            class="input"
+            :disabled="isEditRateMultiplierLocked"
+            class="input disabled:cursor-not-allowed disabled:bg-gray-100 dark:disabled:bg-dark-700"
             data-tour="group-form-multiplier"
           />
+          <p v-if="isEditRateMultiplierLocked" class="input-hint">
+            {{ t("admin.groups.autoRate.lockedHint") }}
+          </p>
         </div>
         <div>
           <label class="input-label">{{ t("admin.groups.form.rpmLimit") }}</label>
@@ -3293,6 +3479,168 @@
                 placeholder="0"
                 :title="t('admin.groups.profitControl.safetyBufferHint')"
               />
+            </div>
+          </div>
+        </div>
+
+        <!-- 自动分组倍率（仅 OpenAI 按量计费分组） -->
+        <div
+          v-if="
+            isAutoRateGroupSupported(
+              editForm.platform,
+              editForm.subscription_type,
+            )
+          "
+          class="border-t pt-4"
+        >
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+              <input
+                v-model="editForm.auto_rate_enabled"
+                type="checkbox"
+                class="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                data-testid="edit-auto-rate-toggle"
+              />
+              <span>{{ t("admin.groups.autoRate.enable") }}</span>
+            </label>
+            <button
+              v-if="editingGroup?.auto_rate_enabled && editForm.auto_rate_enabled"
+              type="button"
+              :disabled="recalculatingAutoRate"
+              class="btn btn-secondary btn-sm"
+              data-testid="edit-auto-rate-recalculate"
+              @click="handleRecalculateAutoRate"
+            >
+              {{
+                recalculatingAutoRate
+                  ? t("admin.groups.autoRate.recalculating")
+                  : t("admin.groups.autoRate.recalculate")
+              }}
+            </button>
+          </div>
+          <p class="mb-3 mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+            {{
+              editForm.auto_rate_enabled
+                ? t("admin.groups.autoRate.enabledHint")
+                : t("admin.groups.autoRate.disabledHint")
+            }}
+          </p>
+          <div v-if="editForm.auto_rate_enabled" class="space-y-3">
+            <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div>
+                <label class="input-label">{{
+                  t("admin.groups.autoRate.modeLabel")
+                }}</label>
+                <select
+                  v-model="editForm.auto_rate_mode"
+                  class="input"
+                  data-testid="edit-auto-rate-mode"
+                >
+                  <option value="percentage">
+                    {{ t("admin.groups.autoRate.modePercentage") }}
+                  </option>
+                  <option value="fixed">
+                    {{ t("admin.groups.autoRate.modeFixed") }}
+                  </option>
+                </select>
+              </div>
+              <div v-if="editForm.auto_rate_mode === 'percentage'">
+                <label class="input-label">{{
+                  t("admin.groups.autoRate.percentageValueLabel")
+                }}</label>
+                <input
+                  v-model.number="editForm.auto_rate_percent"
+                  type="number"
+                  step="0.1"
+                  min="0"
+                  max="10000"
+                  class="input"
+                  placeholder="0"
+                  data-testid="edit-auto-rate-percent"
+                />
+                <p class="input-hint">
+                  {{ t("admin.groups.autoRate.percentageValueHint") }}
+                </p>
+              </div>
+              <div v-else>
+                <label class="input-label">{{
+                  t("admin.groups.autoRate.fixedValueLabel")
+                }}</label>
+                <input
+                  v-model.number="editForm.auto_rate_fixed"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  max="100"
+                  class="input"
+                  placeholder="0"
+                  data-testid="edit-auto-rate-fixed"
+                />
+                <p class="input-hint">
+                  {{ t("admin.groups.autoRate.fixedValueHint") }}
+                </p>
+              </div>
+            </div>
+            <div
+              class="rounded-lg border border-sky-200 bg-sky-50/70 p-3 text-xs text-sky-900 dark:border-sky-800/60 dark:bg-sky-950/30 dark:text-sky-200"
+              data-testid="edit-auto-rate-preview"
+            >
+              <div class="mb-1 font-medium">
+                {{ t("admin.groups.autoRate.previewTitle") }}
+              </div>
+              <div v-if="editAutoRatePreviewLoading">
+                {{ t("admin.groups.autoRate.previewLoading") }}
+              </div>
+              <template v-else-if="editAutoRateComputedPreview">
+                <div class="space-y-1">
+                  <div>
+                    {{
+                      t("admin.groups.autoRate.previewEligibleCount", {
+                        count: editAutoRateComputedPreview.eligible_account_count,
+                      })
+                    }}
+                  </div>
+                  <div
+                    v-if="
+                      editAutoRateComputedPreview.max_account_rate !== null &&
+                      editAutoRateComputedPreview.max_account_rate !== undefined
+                    "
+                  >
+                    {{
+                      t("admin.groups.autoRate.previewMaxAccount", {
+                        name:
+                          editAutoRateComputedPreview.max_account_name ||
+                          `#${editAutoRateComputedPreview.max_account_id}`,
+                        rate: editAutoRateComputedPreview.max_account_rate,
+                      })
+                    }}
+                  </div>
+                  <div
+                    v-if="
+                      editAutoRateComputedPreview.status === 'ready' &&
+                      editAutoRateComputedPreview.computed_rate != null
+                    "
+                    class="font-semibold text-sky-700 dark:text-sky-300"
+                  >
+                    {{
+                      t("admin.groups.autoRate.previewComputedRate", {
+                        rate: editAutoRateComputedPreview.computed_rate,
+                      })
+                    }}
+                  </div>
+                  <div
+                    v-else-if="
+                      editAutoRateComputedPreview.status === 'out_of_range'
+                    "
+                    class="text-amber-700 dark:text-amber-300"
+                  >
+                    {{ t("admin.groups.autoRate.previewOutOfRange") }}
+                  </div>
+                  <div v-else class="text-amber-700 dark:text-amber-300">
+                    {{ t("admin.groups.autoRate.previewNoEligible") }}
+                  </div>
+                </div>
+              </template>
             </div>
           </div>
         </div>
@@ -4681,6 +5029,8 @@ import type {
   CompositeRouteDecision,
   CompositeRouteEndpoint,
   CompositeRouteMatchType,
+  GroupAutoRateMode,
+  GroupAutoRatePreview,
   GroupI18n,
   GroupPlatform,
   SubscriptionType,
@@ -4761,6 +5111,15 @@ import {
   cacheHitAdjustmentDecimalToPercent,
   validateCacheHitAdjustmentPercent,
 } from "./groupsCacheHitAdjustment";
+import {
+  autoRateDecimalToPercent,
+  autoRatePercentToDecimal,
+  computeGroupAutoRate,
+  formatAutoRateRuleBadge,
+  isAutoRateGroupSupported,
+  normalizeAutoRateFixedValue,
+  validateAutoRateFormValue,
+} from "./groupsAutoRate";
 import {
   normalizeReasoningEffortForPlatform,
   normalizeReasoningEffortOverLimit,
@@ -5410,6 +5769,11 @@ const createForm = reactive({
   profit_safety_buffer_percent: 0,
   // 缓存命中率修正（0~10%，提交时转 0~0.10 小数）
   cache_hit_rate_adjustment_percent: 0,
+  // OpenAI 按量分组自动倍率配置
+  auto_rate_enabled: false,
+  auto_rate_mode: "percentage" as GroupAutoRateMode,
+  auto_rate_percent: 0,
+  auto_rate_fixed: 0,
   // Claude Code 客户端限制（仅 anthropic 平台使用）
   claude_code_only: false,
   fallback_group_id: null as number | null,
@@ -5825,6 +6189,11 @@ const editForm = reactive({
   profit_safety_buffer_percent: 0,
   // 缓存命中率修正（0~10%，提交时转 0~0.10 小数）
   cache_hit_rate_adjustment_percent: 0,
+  // OpenAI 按量分组自动倍率配置
+  auto_rate_enabled: false,
+  auto_rate_mode: "percentage" as GroupAutoRateMode,
+  auto_rate_percent: 0,
+  auto_rate_fixed: 0,
   // Claude Code 客户端限制（仅 anthropic 平台使用）
   claude_code_only: false,
   fallback_group_id: null as number | null,
@@ -6307,6 +6676,11 @@ const closeCreateModal = () => {
   createForm.profit_min_margin_percent = 0;
   createForm.profit_safety_buffer_percent = 0;
   createForm.cache_hit_rate_adjustment_percent = 0;
+  createForm.auto_rate_enabled = false;
+  createForm.auto_rate_mode = "percentage";
+  createForm.auto_rate_percent = 0;
+  createForm.auto_rate_fixed = 0;
+  createAutoRatePreviewData.value = null;
   createForm.claude_code_only = false;
   createForm.fallback_group_id = null;
   createForm.fallback_group_id_on_invalid_request = null;
@@ -6379,6 +6753,220 @@ const validateCacheHitAdjustmentField = (
   return true;
 };
 
+const createAutoRatePreviewData = ref<GroupAutoRatePreview | null>(null);
+const createAutoRatePreviewLoading = ref(false);
+const editAutoRatePreviewData = ref<GroupAutoRatePreview | null>(null);
+const editAutoRatePreviewLoading = ref(false);
+const recalculatingAutoRate = ref(false);
+let createAutoRatePreviewSeq = 0;
+let editAutoRatePreviewSeq = 0;
+
+const isCreateRateMultiplierLocked = computed(
+  () =>
+    createForm.auto_rate_enabled &&
+    isAutoRateGroupSupported(createForm.platform, createForm.subscription_type) &&
+    createForm.copy_accounts_from_group_ids.length > 0,
+);
+
+const isEditRateMultiplierLocked = computed(
+  () =>
+    editForm.auto_rate_enabled &&
+    isAutoRateGroupSupported(editForm.platform, editForm.subscription_type),
+);
+
+const buildAutoRateComputedPreview = (
+  rawPreview: GroupAutoRatePreview | null,
+  enabled: boolean,
+  mode: GroupAutoRateMode,
+  percentVal: number | string | null | undefined,
+  fixedVal: number | string | null | undefined,
+): GroupAutoRatePreview | null => {
+  if (!enabled) {
+    return null;
+  }
+  const backendValue =
+    mode === "fixed"
+      ? normalizeAutoRateFixedValue(fixedVal)
+      : autoRatePercentToDecimal(percentVal);
+  if (
+    !rawPreview ||
+    rawPreview.eligible_account_count <= 0 ||
+    rawPreview.max_account_rate === null ||
+    rawPreview.max_account_rate === undefined
+  ) {
+    return {
+      supported: true,
+      eligible_account_count: 0,
+      mode,
+      value: backendValue,
+      computed_rate: null,
+      status: "no_eligible_accounts",
+    };
+  }
+  const computedRate = computeGroupAutoRate(
+    rawPreview.max_account_rate,
+    mode,
+    backendValue,
+  );
+  return {
+    ...rawPreview,
+    mode,
+    value: backendValue,
+    computed_rate: computedRate,
+    status: computedRate !== null ? "ready" : "out_of_range",
+  };
+};
+
+const createAutoRateComputedPreview = computed(() =>
+  buildAutoRateComputedPreview(
+    createAutoRatePreviewData.value,
+    createForm.auto_rate_enabled &&
+      isAutoRateGroupSupported(createForm.platform, createForm.subscription_type),
+    createForm.auto_rate_mode,
+    createForm.auto_rate_percent,
+    createForm.auto_rate_fixed,
+  ),
+);
+
+const editAutoRateComputedPreview = computed(() =>
+  buildAutoRateComputedPreview(
+    editAutoRatePreviewData.value,
+    editForm.auto_rate_enabled &&
+      isAutoRateGroupSupported(editForm.platform, editForm.subscription_type),
+    editForm.auto_rate_mode,
+    editForm.auto_rate_percent,
+    editForm.auto_rate_fixed,
+  ),
+);
+
+const pickBestAutoRatePreview = (
+  previews: GroupAutoRatePreview[],
+): GroupAutoRatePreview | null => {
+  let best: GroupAutoRatePreview | null = null;
+  for (const item of previews) {
+    if (!item || item.eligible_account_count <= 0 || item.max_account_rate == null) {
+      continue;
+    }
+    if (
+      !best ||
+      best.max_account_rate == null ||
+      item.max_account_rate > best.max_account_rate
+    ) {
+      best = item;
+    }
+  }
+  return best ?? previews[0] ?? null;
+};
+
+const loadAutoRatePreview = async (target: "create" | "edit") => {
+  if (target === "create") {
+    const seq = ++createAutoRatePreviewSeq;
+    if (
+      !createForm.auto_rate_enabled ||
+      !isAutoRateGroupSupported(createForm.platform, createForm.subscription_type)
+    ) {
+      createAutoRatePreviewData.value = null;
+      createAutoRatePreviewLoading.value = false;
+      return;
+    }
+    if (createForm.copy_accounts_from_group_ids.length === 0) {
+      createAutoRatePreviewData.value = {
+        supported: true,
+        eligible_account_count: 0,
+        mode: createForm.auto_rate_mode,
+        value: 0,
+        status: "no_eligible_accounts",
+      };
+      createAutoRatePreviewLoading.value = false;
+      return;
+    }
+    createAutoRatePreviewLoading.value = true;
+    try {
+      const previews = await Promise.all(
+        createForm.copy_accounts_from_group_ids.map((sourceId) =>
+          adminAPI.groups.getAutoRatePreview(0, {
+            source_group_id: sourceId,
+            require_oauth_only: createForm.require_oauth_only,
+          }),
+        ),
+      );
+      if (seq === createAutoRatePreviewSeq) {
+        createAutoRatePreviewData.value = pickBestAutoRatePreview(previews);
+      }
+    } catch {
+      if (seq === createAutoRatePreviewSeq) {
+        createAutoRatePreviewData.value = null;
+      }
+    } finally {
+      if (seq === createAutoRatePreviewSeq) {
+        createAutoRatePreviewLoading.value = false;
+      }
+    }
+    return;
+  }
+
+  const seq = ++editAutoRatePreviewSeq;
+  if (
+    !editingGroup.value ||
+    !editForm.auto_rate_enabled ||
+    !isAutoRateGroupSupported(editForm.platform, editForm.subscription_type)
+  ) {
+    editAutoRatePreviewData.value = null;
+    editAutoRatePreviewLoading.value = false;
+    return;
+  }
+  editAutoRatePreviewLoading.value = true;
+  try {
+    let preview: GroupAutoRatePreview | null = null;
+    if (editForm.copy_accounts_from_group_ids.length === 0) {
+      preview = await adminAPI.groups.getAutoRatePreview(editingGroup.value.id);
+    } else {
+      const previews = await Promise.all(
+        editForm.copy_accounts_from_group_ids.map((sourceId) =>
+          adminAPI.groups.getAutoRatePreview(editingGroup.value!.id, {
+            source_group_id: sourceId,
+            require_oauth_only: editForm.require_oauth_only,
+          }),
+        ),
+      );
+      preview = pickBestAutoRatePreview(previews);
+    }
+    if (seq === editAutoRatePreviewSeq) {
+      editAutoRatePreviewData.value = preview;
+    }
+  } catch {
+    if (seq === editAutoRatePreviewSeq) {
+      editAutoRatePreviewData.value = null;
+    }
+  } finally {
+    if (seq === editAutoRatePreviewSeq) {
+      editAutoRatePreviewLoading.value = false;
+    }
+  }
+};
+
+const validateAutoRateFields = (
+  enabled: boolean,
+  platform: string,
+  subscriptionType: string,
+  mode: GroupAutoRateMode,
+  percentVal: number | string | null | undefined,
+  fixedVal: number | string | null | undefined,
+): boolean => {
+  const errorKey = validateAutoRateFormValue(
+    enabled,
+    platform,
+    subscriptionType,
+    mode,
+    mode === "fixed" ? fixedVal : percentVal,
+  );
+  if (errorKey) {
+    appStore.showError(t(`admin.groups.autoRate.${errorKey}`));
+    return false;
+  }
+  return true;
+};
+
 const validateGroupReasoningMultipliers = (pricing: PricingFormEntry[]): boolean => {
   for (const entry of pricing) {
     const error = validateReasoningEffortMultipliers(entry.reasoning_effort_multipliers, t);
@@ -6406,6 +6994,18 @@ const handleCreateGroup = async () => {
     return;
   }
   if (!validateCacheHitAdjustmentField(createForm.cache_hit_rate_adjustment_percent)) {
+    return;
+  }
+  if (
+    !validateAutoRateFields(
+      createForm.auto_rate_enabled,
+      createForm.platform,
+      createForm.subscription_type,
+      createForm.auto_rate_mode,
+      createForm.auto_rate_percent,
+      createForm.auto_rate_fixed,
+    )
+  ) {
     return;
   }
   if (!validateGroupReasoningMultipliers(createForm.model_pricing)) return;
@@ -6501,10 +7101,33 @@ const handleCreateGroup = async () => {
       cache_hit_rate_adjustment: cacheHitAdjustmentPercentToDecimal(
         createForm.cache_hit_rate_adjustment_percent,
       ),
+      auto_rate_enabled:
+        isAutoRateGroupSupported(
+          createForm.platform,
+          createForm.subscription_type,
+        ) && createForm.auto_rate_enabled,
+      auto_rate_mode:
+        isAutoRateGroupSupported(
+          createForm.platform,
+          createForm.subscription_type,
+        ) && createForm.auto_rate_enabled
+          ? createForm.auto_rate_mode
+          : ("" as GroupAutoRateMode),
+      auto_rate_value:
+        isAutoRateGroupSupported(
+          createForm.platform,
+          createForm.subscription_type,
+        ) && createForm.auto_rate_enabled
+          ? createForm.auto_rate_mode === "fixed"
+            ? normalizeAutoRateFixedValue(createForm.auto_rate_fixed)
+            : autoRatePercentToDecimal(createForm.auto_rate_percent)
+          : 0,
     };
     delete (requestData as Record<string, unknown>).profit_min_margin_percent;
     delete (requestData as Record<string, unknown>).profit_safety_buffer_percent;
     delete (requestData as Record<string, unknown>).cache_hit_rate_adjustment_percent;
+    delete (requestData as Record<string, unknown>).auto_rate_percent;
+    delete (requestData as Record<string, unknown>).auto_rate_fixed;
     // v-model.number 清空输入框时产生 ""，转为 null 让后端设为无限制
     const emptyToNull = (v: any) => (v === "" ? null : v);
     requestData.daily_limit_usd = emptyToNull(requestData.daily_limit_usd);
@@ -6513,6 +7136,9 @@ const handleCreateGroup = async () => {
     requestData.daily_limit_tokens = emptyToNull(requestData.daily_limit_tokens);
     requestData.weekly_limit_tokens = emptyToNull(requestData.weekly_limit_tokens);
     requestData.monthly_limit_tokens = emptyToNull(requestData.monthly_limit_tokens);
+    requestData.rate_multiplier = normalizeRateMultiplier(
+      requestData.rate_multiplier,
+    );
     requestData.image_rate_multiplier = normalizeRateMultiplier(
       requestData.image_rate_multiplier,
     );
@@ -6656,6 +7282,16 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.cache_hit_rate_adjustment_percent = cacheHitAdjustmentDecimalToPercent(
     group.cache_hit_rate_adjustment ?? 0,
   );
+  editForm.auto_rate_enabled = group.auto_rate_enabled ?? false;
+  editForm.auto_rate_mode = group.auto_rate_mode || "percentage";
+  editForm.auto_rate_percent =
+    group.auto_rate_mode === "fixed"
+      ? 0
+      : autoRateDecimalToPercent(group.auto_rate_value ?? 0);
+  editForm.auto_rate_fixed =
+    group.auto_rate_mode === "fixed"
+      ? normalizeAutoRateFixedValue(group.auto_rate_value ?? 0)
+      : 0;
   editForm.claude_code_only = group.claude_code_only || false;
   editForm.fallback_group_id = group.fallback_group_id;
   editForm.fallback_group_id_on_invalid_request =
@@ -6723,6 +7359,17 @@ const handleEdit = async (group: AdminGroup) => {
   );
   loadModelAllowlistCandidates("edit", group.id, group.platform);
   showEditModal.value = true;
+  if (
+    isAutoRateGroupSupported(
+      group.platform,
+      group.subscription_type || "standard",
+    ) &&
+    editForm.auto_rate_enabled
+  ) {
+    loadAutoRatePreview("edit");
+  } else {
+    editAutoRatePreviewData.value = null;
+  }
 };
 
 const closeEditModal = () => {
@@ -6748,6 +7395,11 @@ const closeEditModal = () => {
   editForm.profit_min_margin_percent = 0;
   editForm.profit_safety_buffer_percent = 0;
   editForm.cache_hit_rate_adjustment_percent = 0;
+  editForm.auto_rate_enabled = false;
+  editForm.auto_rate_mode = "percentage";
+  editForm.auto_rate_percent = 0;
+  editForm.auto_rate_fixed = 0;
+  editAutoRatePreviewData.value = null;
   editForm.video_rate_independent = false;
   editForm.video_rate_multiplier = 1;
   editForm.video_price_480p = null;
@@ -6789,6 +7441,18 @@ const handleUpdateGroup = async () => {
     return;
   }
   if (!validateCacheHitAdjustmentField(editForm.cache_hit_rate_adjustment_percent)) {
+    return;
+  }
+  if (
+    !validateAutoRateFields(
+      editForm.auto_rate_enabled,
+      editForm.platform,
+      editForm.subscription_type,
+      editForm.auto_rate_mode,
+      editForm.auto_rate_percent,
+      editForm.auto_rate_fixed,
+    )
+  ) {
     return;
   }
   if (!validateGroupReasoningMultipliers(editForm.model_pricing)) return;
@@ -6901,10 +7565,36 @@ const handleUpdateGroup = async () => {
       cache_hit_rate_adjustment: cacheHitAdjustmentPercentToDecimal(
         editForm.cache_hit_rate_adjustment_percent,
       ),
+      auto_rate_enabled:
+        isAutoRateGroupSupported(
+          editForm.platform,
+          editForm.subscription_type,
+        ) && editForm.auto_rate_enabled,
+      auto_rate_mode:
+        isAutoRateGroupSupported(
+          editForm.platform,
+          editForm.subscription_type,
+        ) && editForm.auto_rate_enabled
+          ? editForm.auto_rate_mode
+          : ("" as GroupAutoRateMode),
+      auto_rate_value:
+        isAutoRateGroupSupported(
+          editForm.platform,
+          editForm.subscription_type,
+        ) && editForm.auto_rate_enabled
+          ? editForm.auto_rate_mode === "fixed"
+            ? normalizeAutoRateFixedValue(editForm.auto_rate_fixed)
+            : autoRatePercentToDecimal(editForm.auto_rate_percent)
+          : 0,
     };
     delete (payload as Record<string, unknown>).profit_min_margin_percent;
     delete (payload as Record<string, unknown>).profit_safety_buffer_percent;
     delete (payload as Record<string, unknown>).cache_hit_rate_adjustment_percent;
+    delete (payload as Record<string, unknown>).auto_rate_percent;
+    delete (payload as Record<string, unknown>).auto_rate_fixed;
+    if (isEditRateMultiplierLocked.value) {
+      delete (payload as Record<string, unknown>).rate_multiplier;
+    }
     // v-model.number 清空输入框时产生 ""，转为 null 让后端设为无限制
     const emptyToNull = (v: any) => (v === "" ? null : v);
     payload.daily_limit_usd = emptyToNull(payload.daily_limit_usd);
@@ -6981,6 +7671,41 @@ const handleUpdateGroup = async () => {
     console.error("Error updating group:", error);
   } finally {
     submitting.value = false;
+  }
+};
+
+const handleRecalculateAutoRate = async () => {
+  if (!editingGroup.value || recalculatingAutoRate.value) return;
+  recalculatingAutoRate.value = true;
+  try {
+    const previousRate = editingGroup.value.rate_multiplier;
+    const res = await adminAPI.groups.recalculateAutoRate(editingGroup.value.id);
+    editingGroup.value = res.group;
+    editForm.rate_multiplier = res.group.rate_multiplier;
+    editAutoRatePreviewData.value = res.preview;
+    if (Math.abs(res.group.rate_multiplier - previousRate) > 1e-9) {
+      appStore.showSuccess(
+        t("admin.groups.autoRate.recalculateSuccess", {
+          rate: res.group.rate_multiplier,
+        }),
+      );
+    } else {
+      appStore.showSuccess(
+        t("admin.groups.autoRate.recalculateNoChange", {
+          rate: res.group.rate_multiplier,
+        }),
+      );
+    }
+    loadGroups();
+  } catch (error: any) {
+    appStore.showError(
+      extractApiErrorMessage(
+        error,
+        t("admin.groups.autoRate.recalculateFailed"),
+      ),
+    );
+  } finally {
+    recalculatingAutoRate.value = false;
   }
 };
 
@@ -7269,6 +7994,13 @@ watch(
       createForm.off_peak_rate_multiplier = 1.0;
       createPeakModelRules.value = [];
     }
+    if (!isAutoRateGroupSupported(createForm.platform, newVal)) {
+      createForm.auto_rate_enabled = false;
+      createForm.auto_rate_mode = "percentage";
+      createForm.auto_rate_percent = 0;
+      createForm.auto_rate_fixed = 0;
+      createAutoRatePreviewData.value = null;
+    }
   },
 );
 
@@ -7298,12 +8030,26 @@ watch(
       editForm.off_peak_rate_multiplier = 1.0;
       editPeakModelRules.value = [];
     }
+    if (!isAutoRateGroupSupported(editForm.platform, newVal)) {
+      editForm.auto_rate_enabled = false;
+      editForm.auto_rate_mode = "percentage";
+      editForm.auto_rate_percent = 0;
+      editForm.auto_rate_fixed = 0;
+      editAutoRatePreviewData.value = null;
+    }
   },
 );
 
 watch(
   () => createForm.platform,
   (newVal) => {
+    if (!isAutoRateGroupSupported(newVal, createForm.subscription_type)) {
+      createForm.auto_rate_enabled = false;
+      createForm.auto_rate_mode = "percentage";
+      createForm.auto_rate_percent = 0;
+      createForm.auto_rate_fixed = 0;
+      createAutoRatePreviewData.value = null;
+    }
     if (!["anthropic", "antigravity"].includes(newVal)) {
       createForm.fallback_group_id_on_invalid_request = null;
     }
@@ -7362,6 +8108,13 @@ watch(
 watch(
   () => editForm.platform,
   (newVal) => {
+    if (!isAutoRateGroupSupported(newVal, editForm.subscription_type)) {
+      editForm.auto_rate_enabled = false;
+      editForm.auto_rate_mode = "percentage";
+      editForm.auto_rate_percent = 0;
+      editForm.auto_rate_fixed = 0;
+      editAutoRatePreviewData.value = null;
+    }
     if (!["anthropic", "antigravity"].includes(newVal)) {
       editForm.fallback_group_id_on_invalid_request = null;
     }
@@ -7409,6 +8162,38 @@ watch(
   () => {
     resetDisabledBatchImagePricing(editForm);
   },
+);
+
+watch(
+  () => [
+    createForm.auto_rate_enabled,
+    createForm.platform,
+    createForm.subscription_type,
+    createForm.copy_accounts_from_group_ids,
+    createForm.require_oauth_only,
+  ],
+  () => {
+    if (showCreateModal.value && createForm.auto_rate_enabled) {
+      loadAutoRatePreview("create");
+    }
+  },
+  { deep: true },
+);
+
+watch(
+  () => [
+    editForm.auto_rate_enabled,
+    editForm.platform,
+    editForm.subscription_type,
+    editForm.copy_accounts_from_group_ids,
+    editForm.require_oauth_only,
+  ],
+  () => {
+    if (showEditModal.value && editForm.auto_rate_enabled) {
+      loadAutoRatePreview("edit");
+    }
+  },
+  { deep: true },
 );
 
 watch(

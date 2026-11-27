@@ -495,8 +495,12 @@ func ProvideSchedulerSnapshotService(
 	accountRepo AccountRepository,
 	groupRepo GroupRepository,
 	cfg *config.Config,
+	autoRateService *GroupAutoRateService,
 ) *SchedulerSnapshotService {
 	svc := NewSchedulerSnapshotService(cache, outboxRepo, accountRepo, groupRepo, cfg)
+	if autoRateService != nil {
+		svc.SetGroupAutoRateSyncer(autoRateService)
+	}
 	svc.Start()
 	return svc
 }
@@ -682,6 +686,72 @@ func ProvideOpsScheduledReportService(
 ) *OpsScheduledReportService {
 	svc := NewOpsScheduledReportService(opsService, userService, emailService, redisClient, cfg)
 	svc.Start()
+	return svc
+}
+
+// ProvideGroupAutoRateService wires GroupAutoRateService with auth cache invalidation.
+func ProvideGroupAutoRateService(
+	repo GroupAutoRateRepository,
+	authCacheInvalidator APIKeyAuthCacheInvalidator,
+) *GroupAutoRateService {
+	return NewGroupAutoRateService(repo, authCacheInvalidator)
+}
+
+// ProvideAdminService constructs AdminService and attaches optional auto-rate synchronization.
+func ProvideAdminService(
+	cfg *config.Config,
+	userRepo UserRepository,
+	groupRepo AdminGroupRepository,
+	accountRepo AdminAccountRepository,
+	proxyRepo ProxyRepository,
+	apiKeyRepo APIKeyRepository,
+	redeemCodeRepo RedeemCodeRepository,
+	userGroupRateRepo UserGroupRateRepository,
+	userRPMCache UserRPMCache,
+	billingCacheService *BillingCacheService,
+	proxyProber ProxyExitInfoProber,
+	proxyLatencyCache ProxyLatencyCache,
+	authCacheInvalidator APIKeyAuthCacheInvalidator,
+	entClient *dbent.Client,
+	settingService *SettingService,
+	defaultSubAssigner DefaultSubscriptionAssigner,
+	userSubRepo UserSubscriptionRepository,
+	privacyClientFactory PrivacyClientFactory,
+	runtimeBlocker AccountRuntimeBlocker,
+	affiliateService *AffiliateService,
+	compositeRouteRepo CompositeModelRouteRepository,
+	compositeResolver *CompositeRouteResolver,
+	channelCacheInvalidator ChannelCacheInvalidator,
+	autoRateService *GroupAutoRateService,
+) AdminService {
+	svc := NewAdminService(
+		cfg,
+		userRepo,
+		groupRepo,
+		accountRepo,
+		proxyRepo,
+		apiKeyRepo,
+		redeemCodeRepo,
+		userGroupRateRepo,
+		userRPMCache,
+		billingCacheService,
+		proxyProber,
+		proxyLatencyCache,
+		authCacheInvalidator,
+		entClient,
+		settingService,
+		defaultSubAssigner,
+		userSubRepo,
+		privacyClientFactory,
+		runtimeBlocker,
+		affiliateService,
+		compositeRouteRepo,
+		compositeResolver,
+		channelCacheInvalidator,
+	)
+	if impl, ok := svc.(*adminServiceImpl); ok && autoRateService != nil {
+		impl.SetGroupAutoRateService(autoRateService)
+	}
 	return svc
 }
 
@@ -881,7 +951,8 @@ var ProviderSet = wire.NewSet(
 	NewBillingService,
 	ProvideBillingCacheService,
 	NewAnnouncementService,
-	NewAdminService,
+	ProvideGroupAutoRateService,
+	ProvideAdminService,
 	NewGatewayService,
 	NewOpenAIGatewayService,
 	ProvideImageStorageSettingService,

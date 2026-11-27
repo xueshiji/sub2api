@@ -1016,6 +1016,48 @@ func (_c *GroupCreate) SetNillableCacheHitRateAdjustment(v *float64) *GroupCreat
 	return _c
 }
 
+// SetAutoRateEnabled sets the "auto_rate_enabled" field.
+func (_c *GroupCreate) SetAutoRateEnabled(v bool) *GroupCreate {
+	_c.mutation.SetAutoRateEnabled(v)
+	return _c
+}
+
+// SetNillableAutoRateEnabled sets the "auto_rate_enabled" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableAutoRateEnabled(v *bool) *GroupCreate {
+	if v != nil {
+		_c.SetAutoRateEnabled(*v)
+	}
+	return _c
+}
+
+// SetAutoRateMode sets the "auto_rate_mode" field.
+func (_c *GroupCreate) SetAutoRateMode(v string) *GroupCreate {
+	_c.mutation.SetAutoRateMode(v)
+	return _c
+}
+
+// SetNillableAutoRateMode sets the "auto_rate_mode" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableAutoRateMode(v *string) *GroupCreate {
+	if v != nil {
+		_c.SetAutoRateMode(*v)
+	}
+	return _c
+}
+
+// SetAutoRateValue sets the "auto_rate_value" field.
+func (_c *GroupCreate) SetAutoRateValue(v float64) *GroupCreate {
+	_c.mutation.SetAutoRateValue(v)
+	return _c
+}
+
+// SetNillableAutoRateValue sets the "auto_rate_value" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableAutoRateValue(v *float64) *GroupCreate {
+	if v != nil {
+		_c.SetAutoRateValue(*v)
+	}
+	return _c
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_c *GroupCreate) AddAPIKeyIDs(ids ...int64) *GroupCreate {
 	_c.mutation.AddAPIKeyIDs(ids...)
@@ -1341,6 +1383,18 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultCacheHitRateAdjustment
 		_c.mutation.SetCacheHitRateAdjustment(v)
 	}
+	if _, ok := _c.mutation.AutoRateEnabled(); !ok {
+		v := group.DefaultAutoRateEnabled
+		_c.mutation.SetAutoRateEnabled(v)
+	}
+	if _, ok := _c.mutation.AutoRateMode(); !ok {
+		v := group.DefaultAutoRateMode
+		_c.mutation.SetAutoRateMode(v)
+	}
+	if _, ok := _c.mutation.AutoRateValue(); !ok {
+		v := group.DefaultAutoRateValue
+		_c.mutation.SetAutoRateValue(v)
+	}
 	return nil
 }
 
@@ -1562,6 +1616,20 @@ func (_c *GroupCreate) check() error {
 	}
 	if _, ok := _c.mutation.CacheHitRateAdjustment(); !ok {
 		return &ValidationError{Name: "cache_hit_rate_adjustment", err: errors.New(`ent: missing required field "Group.cache_hit_rate_adjustment"`)}
+	}
+	if _, ok := _c.mutation.AutoRateEnabled(); !ok {
+		return &ValidationError{Name: "auto_rate_enabled", err: errors.New(`ent: missing required field "Group.auto_rate_enabled"`)}
+	}
+	if _, ok := _c.mutation.AutoRateMode(); !ok {
+		return &ValidationError{Name: "auto_rate_mode", err: errors.New(`ent: missing required field "Group.auto_rate_mode"`)}
+	}
+	if v, ok := _c.mutation.AutoRateMode(); ok {
+		if err := group.AutoRateModeValidator(v); err != nil {
+			return &ValidationError{Name: "auto_rate_mode", err: fmt.Errorf(`ent: validator failed for field "Group.auto_rate_mode": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.AutoRateValue(); !ok {
+		return &ValidationError{Name: "auto_rate_value", err: errors.New(`ent: missing required field "Group.auto_rate_value"`)}
 	}
 	return nil
 }
@@ -1889,6 +1957,18 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.CacheHitRateAdjustment(); ok {
 		_spec.SetField(group.FieldCacheHitRateAdjustment, field.TypeFloat64, value)
 		_node.CacheHitRateAdjustment = value
+	}
+	if value, ok := _c.mutation.AutoRateEnabled(); ok {
+		_spec.SetField(group.FieldAutoRateEnabled, field.TypeBool, value)
+		_node.AutoRateEnabled = value
+	}
+	if value, ok := _c.mutation.AutoRateMode(); ok {
+		_spec.SetField(group.FieldAutoRateMode, field.TypeString, value)
+		_node.AutoRateMode = value
+	}
+	if value, ok := _c.mutation.AutoRateValue(); ok {
+		_spec.SetField(group.FieldAutoRateValue, field.TypeFloat64, value)
+		_node.AutoRateValue = value
 	}
 	if nodes := _c.mutation.APIKeysIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
@@ -3261,6 +3341,48 @@ func (u *GroupUpsert) UpdateCacheHitRateAdjustment() *GroupUpsert {
 // AddCacheHitRateAdjustment adds v to the "cache_hit_rate_adjustment" field.
 func (u *GroupUpsert) AddCacheHitRateAdjustment(v float64) *GroupUpsert {
 	u.Add(group.FieldCacheHitRateAdjustment, v)
+	return u
+}
+
+// SetAutoRateEnabled sets the "auto_rate_enabled" field.
+func (u *GroupUpsert) SetAutoRateEnabled(v bool) *GroupUpsert {
+	u.Set(group.FieldAutoRateEnabled, v)
+	return u
+}
+
+// UpdateAutoRateEnabled sets the "auto_rate_enabled" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateAutoRateEnabled() *GroupUpsert {
+	u.SetExcluded(group.FieldAutoRateEnabled)
+	return u
+}
+
+// SetAutoRateMode sets the "auto_rate_mode" field.
+func (u *GroupUpsert) SetAutoRateMode(v string) *GroupUpsert {
+	u.Set(group.FieldAutoRateMode, v)
+	return u
+}
+
+// UpdateAutoRateMode sets the "auto_rate_mode" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateAutoRateMode() *GroupUpsert {
+	u.SetExcluded(group.FieldAutoRateMode)
+	return u
+}
+
+// SetAutoRateValue sets the "auto_rate_value" field.
+func (u *GroupUpsert) SetAutoRateValue(v float64) *GroupUpsert {
+	u.Set(group.FieldAutoRateValue, v)
+	return u
+}
+
+// UpdateAutoRateValue sets the "auto_rate_value" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateAutoRateValue() *GroupUpsert {
+	u.SetExcluded(group.FieldAutoRateValue)
+	return u
+}
+
+// AddAutoRateValue adds v to the "auto_rate_value" field.
+func (u *GroupUpsert) AddAutoRateValue(v float64) *GroupUpsert {
+	u.Add(group.FieldAutoRateValue, v)
 	return u
 }
 
@@ -4730,6 +4852,55 @@ func (u *GroupUpsertOne) AddCacheHitRateAdjustment(v float64) *GroupUpsertOne {
 func (u *GroupUpsertOne) UpdateCacheHitRateAdjustment() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateCacheHitRateAdjustment()
+	})
+}
+
+// SetAutoRateEnabled sets the "auto_rate_enabled" field.
+func (u *GroupUpsertOne) SetAutoRateEnabled(v bool) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetAutoRateEnabled(v)
+	})
+}
+
+// UpdateAutoRateEnabled sets the "auto_rate_enabled" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateAutoRateEnabled() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateAutoRateEnabled()
+	})
+}
+
+// SetAutoRateMode sets the "auto_rate_mode" field.
+func (u *GroupUpsertOne) SetAutoRateMode(v string) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetAutoRateMode(v)
+	})
+}
+
+// UpdateAutoRateMode sets the "auto_rate_mode" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateAutoRateMode() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateAutoRateMode()
+	})
+}
+
+// SetAutoRateValue sets the "auto_rate_value" field.
+func (u *GroupUpsertOne) SetAutoRateValue(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetAutoRateValue(v)
+	})
+}
+
+// AddAutoRateValue adds v to the "auto_rate_value" field.
+func (u *GroupUpsertOne) AddAutoRateValue(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddAutoRateValue(v)
+	})
+}
+
+// UpdateAutoRateValue sets the "auto_rate_value" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateAutoRateValue() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateAutoRateValue()
 	})
 }
 
@@ -6365,6 +6536,55 @@ func (u *GroupUpsertBulk) AddCacheHitRateAdjustment(v float64) *GroupUpsertBulk 
 func (u *GroupUpsertBulk) UpdateCacheHitRateAdjustment() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateCacheHitRateAdjustment()
+	})
+}
+
+// SetAutoRateEnabled sets the "auto_rate_enabled" field.
+func (u *GroupUpsertBulk) SetAutoRateEnabled(v bool) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetAutoRateEnabled(v)
+	})
+}
+
+// UpdateAutoRateEnabled sets the "auto_rate_enabled" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateAutoRateEnabled() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateAutoRateEnabled()
+	})
+}
+
+// SetAutoRateMode sets the "auto_rate_mode" field.
+func (u *GroupUpsertBulk) SetAutoRateMode(v string) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetAutoRateMode(v)
+	})
+}
+
+// UpdateAutoRateMode sets the "auto_rate_mode" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateAutoRateMode() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateAutoRateMode()
+	})
+}
+
+// SetAutoRateValue sets the "auto_rate_value" field.
+func (u *GroupUpsertBulk) SetAutoRateValue(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetAutoRateValue(v)
+	})
+}
+
+// AddAutoRateValue adds v to the "auto_rate_value" field.
+func (u *GroupUpsertBulk) AddAutoRateValue(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddAutoRateValue(v)
+	})
+}
+
+// UpdateAutoRateValue sets the "auto_rate_value" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateAutoRateValue() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateAutoRateValue()
 	})
 }
 

@@ -166,6 +166,12 @@ const (
 	FieldProfitSafetyBuffer = "profit_safety_buffer"
 	// FieldCacheHitRateAdjustment holds the string denoting the cache_hit_rate_adjustment field in the database.
 	FieldCacheHitRateAdjustment = "cache_hit_rate_adjustment"
+	// FieldAutoRateEnabled holds the string denoting the auto_rate_enabled field in the database.
+	FieldAutoRateEnabled = "auto_rate_enabled"
+	// FieldAutoRateMode holds the string denoting the auto_rate_mode field in the database.
+	FieldAutoRateMode = "auto_rate_mode"
+	// FieldAutoRateValue holds the string denoting the auto_rate_value field in the database.
+	FieldAutoRateValue = "auto_rate_value"
 	// EdgeAPIKeys holds the string denoting the api_keys edge name in mutations.
 	EdgeAPIKeys = "api_keys"
 	// EdgeRedeemCodes holds the string denoting the redeem_codes edge name in mutations.
@@ -316,6 +322,9 @@ var Columns = []string{
 	FieldProfitMinMargin,
 	FieldProfitSafetyBuffer,
 	FieldCacheHitRateAdjustment,
+	FieldAutoRateEnabled,
+	FieldAutoRateMode,
+	FieldAutoRateValue,
 }
 
 var (
@@ -471,6 +480,14 @@ var (
 	DefaultProfitSafetyBuffer float64
 	// DefaultCacheHitRateAdjustment holds the default value on creation for the "cache_hit_rate_adjustment" field.
 	DefaultCacheHitRateAdjustment float64
+	// DefaultAutoRateEnabled holds the default value on creation for the "auto_rate_enabled" field.
+	DefaultAutoRateEnabled bool
+	// DefaultAutoRateMode holds the default value on creation for the "auto_rate_mode" field.
+	DefaultAutoRateMode string
+	// AutoRateModeValidator is a validator for the "auto_rate_mode" field. It is called by the builders before save.
+	AutoRateModeValidator func(string) error
+	// DefaultAutoRateValue holds the default value on creation for the "auto_rate_value" field.
+	DefaultAutoRateValue float64
 )
 
 // OrderOption defines the ordering options for the Group queries.
@@ -804,6 +821,21 @@ func ByProfitSafetyBuffer(opts ...sql.OrderTermOption) OrderOption {
 // ByCacheHitRateAdjustment orders the results by the cache_hit_rate_adjustment field.
 func ByCacheHitRateAdjustment(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldCacheHitRateAdjustment, opts...).ToFunc()
+}
+
+// ByAutoRateEnabled orders the results by the auto_rate_enabled field.
+func ByAutoRateEnabled(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldAutoRateEnabled, opts...).ToFunc()
+}
+
+// ByAutoRateMode orders the results by the auto_rate_mode field.
+func ByAutoRateMode(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldAutoRateMode, opts...).ToFunc()
+}
+
+// ByAutoRateValue orders the results by the auto_rate_value field.
+func ByAutoRateValue(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldAutoRateValue, opts...).ToFunc()
 }
 
 // ByAPIKeysCount orders the results by api_keys count.

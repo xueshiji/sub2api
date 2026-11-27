@@ -162,7 +162,10 @@ func createGroupRecord(ctx context.Context, client *dbent.Client, groupIn *servi
 		SetProfitControlEnabled(groupIn.ProfitControlEnabled).
 		SetProfitMinMargin(groupIn.ProfitMinMargin).
 		SetProfitSafetyBuffer(groupIn.ProfitSafetyBuffer).
-		SetCacheHitRateAdjustment(groupIn.CacheHitRateAdjustment)
+		SetCacheHitRateAdjustment(groupIn.CacheHitRateAdjustment).
+		SetAutoRateEnabled(groupIn.AutoRateEnabled).
+		SetAutoRateMode(groupIn.AutoRateMode).
+		SetAutoRateValue(groupIn.AutoRateValue)
 	if groupIn.DuplicateOperationID != "" {
 		builder = builder.SetDuplicateOperationID(groupIn.DuplicateOperationID)
 	}
@@ -354,7 +357,10 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 		SetProfitControlEnabled(groupIn.ProfitControlEnabled).
 		SetProfitMinMargin(groupIn.ProfitMinMargin).
 		SetProfitSafetyBuffer(groupIn.ProfitSafetyBuffer).
-		SetCacheHitRateAdjustment(groupIn.CacheHitRateAdjustment)
+		SetCacheHitRateAdjustment(groupIn.CacheHitRateAdjustment).
+		SetAutoRateEnabled(groupIn.AutoRateEnabled).
+		SetAutoRateMode(groupIn.AutoRateMode).
+		SetAutoRateValue(groupIn.AutoRateValue)
 
 	// 显式处理可空字段：nil 需要 clear，非 nil 需要 set。
 	if groupIn.DailyLimitUSD != nil {

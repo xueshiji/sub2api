@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"strings"
 	"time"
@@ -105,6 +106,13 @@ func cloneGroupPeakModelMultipliers(value map[string]PeakModelMultiplierRule) ma
 }
 
 func cloneGroupForDuplicate(source *Group, operationID string) *Group {
+	autoRateCfg := NormalizeGroupAutoRateConfig(GroupAutoRateConfig{
+		Platform:         source.Platform,
+		SubscriptionType: source.SubscriptionType,
+		Enabled:          source.AutoRateEnabled,
+		Mode:             source.AutoRateMode,
+		Value:            source.AutoRateValue,
+	})
 	return &Group{
 		Name:                            duplicateGroupName(source.Name, 1),
 		Description:                     source.Description,
@@ -121,6 +129,9 @@ func cloneGroupForDuplicate(source *Group, operationID string) *Group {
 		ProfitMinMargin:                 source.ProfitMinMargin,
 		ProfitSafetyBuffer:              source.ProfitSafetyBuffer,
 		CacheHitRateAdjustment:          source.CacheHitRateAdjustment,
+		AutoRateEnabled:                 autoRateCfg.Enabled,
+		AutoRateMode:                    autoRateCfg.Mode,
+		AutoRateValue:                   autoRateCfg.Value,
 		IsExclusive:                     source.IsExclusive,
 		Status:                          duplicateGroupInactiveStatus,
 		DuplicateOperationID:            operationID,
@@ -241,6 +252,11 @@ func (s *adminServiceImpl) DuplicateGroup(ctx context.Context, id int64, actorSc
 		duplicate.CreatedAt = time.Time{}
 		duplicate.UpdatedAt = time.Time{}
 		if err := s.groupDuplicateRepo.CreateFromSource(ctx, duplicate, source.ID); err == nil {
+			if duplicate.AutoRateEnabled && s.autoRateService != nil {
+				if syncErr := s.autoRateService.SyncAutoRateForGroups(ctx, duplicate.ID); syncErr != nil {
+					slog.Warn("duplicate_group_auto_rate_sync_failed", "group_id", duplicate.ID, "error", syncErr)
+				}
+			}
 			hydrated, loadErr := s.groupRepo.GetByID(ctx, duplicate.ID)
 			if loadErr != nil {
 				return nil, fmt.Errorf("load duplicate group: %w", loadErr)

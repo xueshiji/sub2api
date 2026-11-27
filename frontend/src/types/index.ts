@@ -645,6 +645,20 @@ export interface Group {
   updated_at: string
 }
 
+export type GroupAutoRateMode = '' | 'percentage' | 'fixed'
+
+export interface GroupAutoRatePreview {
+  supported: boolean
+  eligible_account_count: number
+  max_account_id?: number | null
+  max_account_name?: string
+  max_account_rate?: number | null
+  mode: GroupAutoRateMode
+  value: number
+  computed_rate?: number | null
+  status: 'ready' | 'no_eligible_accounts' | 'out_of_range'
+}
+
 export interface AdminGroup extends Group {
   // 管理端的 name / description 始终是原字段，各语言译文另放在 i18n 里
   i18n?: GroupI18n
@@ -659,6 +673,10 @@ export interface AdminGroup extends Group {
   profit_safety_buffer: number
   // 缓存命中率修正比例（仅管理员可见，0~0.10 小数存储）
   cache_hit_rate_adjustment: number
+  // OpenAI 按量分组自动倍率配置（仅管理员可见）
+  auto_rate_enabled?: boolean
+  auto_rate_mode?: GroupAutoRateMode
+  auto_rate_value?: number
 
   // 模型路由配置（仅管理员可见，内部信息）
   model_routing: Record<string, number[]> | null
@@ -865,6 +883,9 @@ export interface CreateGroupRequest {
   profit_min_margin?: number
   profit_safety_buffer?: number
   cache_hit_rate_adjustment?: number
+  auto_rate_enabled?: boolean
+  auto_rate_mode?: GroupAutoRateMode
+  auto_rate_value?: number
   claude_code_only?: boolean
   fallback_group_id?: number | null
   fallback_group_id_on_invalid_request?: number | null
@@ -940,6 +961,9 @@ export interface UpdateGroupRequest {
   profit_min_margin?: number
   profit_safety_buffer?: number
   cache_hit_rate_adjustment?: number
+  auto_rate_enabled?: boolean
+  auto_rate_mode?: GroupAutoRateMode
+  auto_rate_value?: number
   claude_code_only?: boolean
   fallback_group_id?: number | null
   fallback_group_id_on_invalid_request?: number | null

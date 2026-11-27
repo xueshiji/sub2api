@@ -66,6 +66,8 @@ type AdminService interface {
 	ClearGroupRPMOverrides(ctx context.Context, groupID int64) error
 	BatchSetGroupRPMOverrides(ctx context.Context, groupID int64, entries []GroupRPMOverrideInput) error
 	UpdateGroupSortOrders(ctx context.Context, updates []GroupSortOrderUpdate) error
+	GetGroupAutoRatePreview(ctx context.Context, id int64, mode *string, value *float64, sourceGroupID *int64, requireOAuthOnly *bool) (*GroupAutoRatePreview, error)
+	RecalculateGroupAutoRate(ctx context.Context, id int64) (*Group, *GroupAutoRatePreview, error)
 
 	// API Key management (admin)
 	AdminUpdateAPIKeyGroupID(ctx context.Context, keyID int64, groupID *int64) (*AdminUpdateAPIKeyGroupIDResult, error)
@@ -322,6 +324,10 @@ type CreateGroupInput struct {
 	ProfitSafetyBuffer   *float64
 	// 缓存命中率修正比例（小数 0~0.10，nil 按 0 处理）
 	CacheHitRateAdjustment *float64
+	// OpenAI 按量分组自动倍率配置
+	AutoRateEnabled bool
+	AutoRateMode    string
+	AutoRateValue   *float64
 	// 从指定分组复制账号（创建分组后在同一事务内绑定）
 	CopyAccountsFromGroupIDs []int64
 }
@@ -413,6 +419,10 @@ type UpdateGroupInput struct {
 	ProfitSafetyBuffer   *float64
 	// 缓存命中率修正比例（nil 表示不修改；小数 0~0.10）
 	CacheHitRateAdjustment *float64
+	// OpenAI 按量分组自动倍率配置（nil 表示不修改）
+	AutoRateEnabled *bool
+	AutoRateMode    *string
+	AutoRateValue   *float64
 	// 从指定分组复制账号（同步操作：先清空当前分组的账号绑定，再绑定源分组的账号）
 	CopyAccountsFromGroupIDs []int64
 }
@@ -737,6 +747,14 @@ type adminServiceImpl struct {
 	compositeResolver    *CompositeRouteResolver
 	// 分组平台变更后用来失效渠道缓存；可为 nil（缓存会在 TTL 到期后自然重建）
 	channelCacheInvalidator ChannelCacheInvalidator
+	autoRateService         *GroupAutoRateService
+}
+
+// SetGroupAutoRateService attaches the optional automatic group rate service.
+func (s *adminServiceImpl) SetGroupAutoRateService(autoRateService *GroupAutoRateService) {
+	if s != nil {
+		s.autoRateService = autoRateService
+	}
 }
 
 // ChannelCacheInvalidator 失效渠道缓存。

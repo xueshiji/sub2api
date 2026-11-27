@@ -6,6 +6,7 @@
 import { apiClient } from '../client'
 import type {
   AdminGroup,
+  GroupAutoRatePreview,
   GroupPlatform,
   CompositeModelRoute,
   CompositeModelRouteInput,
@@ -117,6 +118,31 @@ export async function getModelAllowlistCandidates(
     }
   )
   return data.models || []
+}
+
+export async function getAutoRatePreview(
+  id: number,
+  params?: {
+    mode?: string
+    value?: number
+    source_group_id?: number
+    require_oauth_only?: boolean
+  }
+): Promise<GroupAutoRatePreview> {
+  const { data } = await apiClient.get<GroupAutoRatePreview>(
+    `/admin/groups/${id}/auto-rate-preview`,
+    { params }
+  )
+  return data
+}
+
+export async function recalculateAutoRate(
+  id: number
+): Promise<{ group: AdminGroup; preview: GroupAutoRatePreview }> {
+  const { data } = await apiClient.post<{ group: AdminGroup; preview: GroupAutoRatePreview }>(
+    `/admin/groups/${id}/recalculate-auto-rate`
+  )
+  return data
 }
 
 /**
@@ -478,6 +504,8 @@ export const groupsAPI = {
   getLiveCapability,
   getById,
   getModelAllowlistCandidates,
+  getAutoRatePreview,
+  recalculateAutoRate,
   create,
   duplicate,
   update,

@@ -432,6 +432,22 @@ func (s *stubAdminService) BatchSetGroupRPMOverrides(_ context.Context, _ int64,
 	return nil
 }
 
+func (s *stubAdminService) GetGroupAutoRatePreview(_ context.Context, _ int64, mode *string, value *float64, _ *int64, _ *bool) (*service.GroupAutoRatePreview, error) {
+	m := service.GroupAutoRateModePercentage
+	if mode != nil && *mode != "" {
+		m = *mode
+	}
+	v := 0.0
+	if value != nil {
+		v = *value
+	}
+	return service.BuildGroupAutoRatePreview(true, nil, m, v), nil
+}
+
+func (s *stubAdminService) RecalculateGroupAutoRate(_ context.Context, id int64) (*service.Group, *service.GroupAutoRatePreview, error) {
+	return &service.Group{ID: id, Platform: service.PlatformOpenAI, SubscriptionType: service.SubscriptionTypeStandard, RateMultiplier: 1, AutoRateEnabled: true}, service.BuildGroupAutoRatePreview(true, nil, service.GroupAutoRateModePercentage, 0), nil
+}
+
 func (s *stubAdminService) ListAccounts(ctx context.Context, page, pageSize int, platform, accountType, status, search string, groupID int64, privacyMode string, sortBy, sortOrder string) ([]service.Account, int64, error) {
 	s.lastListAccounts.platform = platform
 	s.lastListAccounts.accountType = accountType

@@ -544,6 +544,12 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 		if err := s.accountRepo.BindGroups(ctx, account.ID, groupIDs); err != nil {
 			return nil, err
 		}
+		if account.IsActive() && account.Schedulable {
+			copiedGroupIDs := append([]int64(nil), groupIDs...)
+			AfterAccountCommit(ctx, func(committedCtx context.Context) {
+				syncAutoRateBestEffortGroups(committedCtx, s.autoRateService, "create_account", copiedGroupIDs...)
+			})
+		}
 	}
 
 	AfterAccountCommit(ctx, func(_ context.Context) {
@@ -581,6 +587,7 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 	if err != nil {
 		return nil, err
 	}
+	previousGroupIDs := append([]int64(nil), account.GroupIDs...)
 	if account.Platform == PlatformTypeSafe && input.Type != "" && input.Type != AccountTypeAPIKey {
 		return nil, errors.New("typesafe accounts only support apikey credentials")
 	}
@@ -927,6 +934,12 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 	if err != nil {
 		return nil, err
 	}
+	if s.autoRateService != nil {
+		affectedGroupIDs := mergeUniqueInt64Slices(previousGroupIDs, updated.GroupIDs)
+		AfterAccountCommit(ctx, func(committedCtx context.Context) {
+			syncAutoRateBestEffortGroups(committedCtx, s.autoRateService, "update_account", affectedGroupIDs...)
+		})
+	}
 	return updated, nil
 }
 
@@ -1007,12 +1020,20 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 
 	// 预取所有目标账号，供凭据守卫/代理守卫/混合渠道检查共用，避免多次 DB 查询。
 	var cachedTargets []*Account
-	if len(input.Credentials) > 0 || input.ProxyID != nil || needMixedChannelCheck || openAISettings.any() || input.ProbeEnabled != nil || input.RateMultiplier != nil {
+	if len(input.Credentials) > 0 || input.ProxyID != nil || needMixedChannelCheck || openAISettings.any() || input.ProbeEnabled != nil || input.RateMultiplier != nil || (input.GroupIDs != nil && s.autoRateService != nil) {
 		loaded, err := s.accountRepo.GetByIDs(ctx, input.AccountIDs)
 		if err != nil {
 			return nil, err
 		}
 		cachedTargets = loaded
+	}
+	var previousBulkGroupIDs []int64
+	if input.GroupIDs != nil && s.autoRateService != nil {
+		for _, target := range cachedTargets {
+			if target != nil {
+				previousBulkGroupIDs = append(previousBulkGroupIDs, target.GroupIDs...)
+			}
+		}
 	}
 	targetsByID := make(map[int64]*Account, len(cachedTargets))
 	for _, account := range cachedTargets {
@@ -1212,6 +1233,20 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 		result.Results = append(result.Results, entry)
 	}
 
+	if s.autoRateService != nil && len(result.SuccessIDs) > 0 {
+		if input.GroupIDs != nil {
+			affectedGroupIDs := mergeUniqueInt64Slices(previousBulkGroupIDs, *input.GroupIDs)
+			AfterAccountCommit(ctx, func(committedCtx context.Context) {
+				syncAutoRateBestEffortGroups(committedCtx, s.autoRateService, "bulk_update_accounts", affectedGroupIDs...)
+			})
+		} else if input.Status != "" || input.Schedulable != nil || input.RateMultiplier != nil {
+			successIDs := append([]int64(nil), result.SuccessIDs...)
+			AfterAccountCommit(ctx, func(committedCtx context.Context) {
+				syncAutoRateBestEffortAccounts(committedCtx, s.autoRateService, "bulk_update_accounts", successIDs...)
+			})
+		}
+	}
+
 	return result, nil
 }
 
@@ -1290,18 +1325,31 @@ func (s *adminServiceImpl) resolveBulkUpdateTargetIDs(ctx context.Context, filte
 }
 
 func (s *adminServiceImpl) DeleteAccount(ctx context.Context, id int64) error {
+	var affectedGroupIDs []int64
+	if s.autoRateService != nil {
+		if account, getErr := s.accountRepo.GetByID(ctx, id); getErr == nil && account != nil {
+			affectedGroupIDs = append(affectedGroupIDs, account.GroupIDs...)
+		}
+	}
 	// 级联删除 spark 影子账号（先删影子，再删母账号）
 	shadows, err := s.accountRepo.ListShadowsByParent(ctx, id)
 	if err != nil {
 		return fmt.Errorf("list spark shadows for cascade delete: %w", err)
 	}
 	for _, shadow := range shadows {
+		affectedGroupIDs = append(affectedGroupIDs, shadow.GroupIDs...)
 		if err := s.accountRepo.Delete(ctx, shadow.ID); err != nil {
 			return fmt.Errorf("cascade delete spark shadow %d: %w", shadow.ID, err)
 		}
 	}
 	if err := s.accountRepo.Delete(ctx, id); err != nil {
 		return err
+	}
+	if len(affectedGroupIDs) > 0 {
+		mergedGroupIDs := mergeUniqueInt64Slices(affectedGroupIDs)
+		AfterAccountCommit(ctx, func(committedCtx context.Context) {
+			syncAutoRateBestEffortGroups(committedCtx, s.autoRateService, "delete_account", mergedGroupIDs...)
+		})
 	}
 	return nil
 }
@@ -1335,16 +1383,25 @@ func (s *adminServiceImpl) ClearAccountError(ctx context.Context, id int64) (*Ac
 	if err != nil {
 		return nil, err
 	}
-	AfterAccountCommit(ctx, func(context.Context) {
+	AfterAccountCommit(ctx, func(committedCtx context.Context) {
 		if s.runtimeBlocker != nil {
 			s.runtimeBlocker.ClearAccountSchedulingBlock(id)
+		}
+		if len(account.GroupIDs) > 0 {
+			syncAutoRateBestEffortGroups(committedCtx, s.autoRateService, "clear_account_error", account.GroupIDs...)
 		}
 	})
 	return account, nil
 }
 
 func (s *adminServiceImpl) SetAccountError(ctx context.Context, id int64, errorMsg string) error {
-	return s.accountRepo.SetError(ctx, id, errorMsg)
+	if err := s.accountRepo.SetError(ctx, id, errorMsg); err != nil {
+		return err
+	}
+	AfterAccountCommit(ctx, func(committedCtx context.Context) {
+		syncAutoRateBestEffortAccounts(committedCtx, s.autoRateService, "set_account_error", id)
+	})
+	return nil
 }
 
 func (s *adminServiceImpl) SetAccountSchedulable(ctx context.Context, id int64, schedulable bool) (*Account, error) {
@@ -1354,6 +1411,12 @@ func (s *adminServiceImpl) SetAccountSchedulable(ctx context.Context, id int64, 
 	updated, err := s.accountRepo.GetByID(ctx, id)
 	if err != nil {
 		return nil, err
+	}
+	if len(updated.GroupIDs) > 0 {
+		groupIDs := append([]int64(nil), updated.GroupIDs...)
+		AfterAccountCommit(ctx, func(committedCtx context.Context) {
+			syncAutoRateBestEffortGroups(committedCtx, s.autoRateService, "set_account_schedulable", groupIDs...)
+		})
 	}
 	return updated, nil
 }
@@ -1490,9 +1553,33 @@ func (s *adminServiceImpl) CreateShadow(ctx context.Context, parentID int64, opt
 			return nil, fmt.Errorf("bind groups for spark shadow: %w", err)
 		}
 		shadow.GroupIDs = groupIDs
+		if shadow.IsActive() && shadow.Schedulable {
+			copiedGroupIDs := append([]int64(nil), groupIDs...)
+			AfterAccountCommit(ctx, func(committedCtx context.Context) {
+				syncAutoRateBestEffortGroups(committedCtx, s.autoRateService, "create_shadow", copiedGroupIDs...)
+			})
+		}
 	}
 
 	return shadow, nil
+}
+
+func mergeUniqueInt64Slices(slicesInput ...[]int64) []int64 {
+	seen := make(map[int64]struct{})
+	var merged []int64
+	for _, slice := range slicesInput {
+		for _, id := range slice {
+			if id <= 0 {
+				continue
+			}
+			if _, ok := seen[id]; ok {
+				continue
+			}
+			seen[id] = struct{}{}
+			merged = append(merged, id)
+		}
+	}
+	return merged
 }
 
 // propagateProxyToShadows syncs proxyID to all spark shadow accounts of parentID.

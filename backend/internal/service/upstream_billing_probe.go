@@ -240,9 +240,10 @@ func normalizeUpstreamBillingProbeSettings(settings *UpstreamBillingProbeSetting
 
 // UpstreamBillingProbeService discovers a remote Sub2API billing snapshot.
 type UpstreamBillingProbeService struct {
-	accountRepo        AccountRepository
-	accountTestService *AccountTestService
-	settingService     *SettingService
+	accountRepo         AccountRepository
+	accountTestService  *AccountTestService
+	settingService      *SettingService
+	groupAutoRateSyncer GroupAutoRateSyncer
 
 	parentCtx    context.Context
 	parentCancel context.CancelFunc
@@ -293,6 +294,13 @@ func (s *UpstreamBillingProbeService) SetLeaderLock(lockCache LeaderLockCache, d
 	s.db = db
 }
 
+// SetGroupAutoRateSyncer attaches an optional automatic group rate syncer.
+func (s *UpstreamBillingProbeService) SetGroupAutoRateSyncer(syncer GroupAutoRateSyncer) {
+	if s != nil {
+		s.groupAutoRateSyncer = syncer
+	}
+}
+
 // ProvideUpstreamBillingProbeService starts the process-wide periodic runner.
 func ProvideUpstreamBillingProbeService(
 	accountRepo AccountRepository,
@@ -300,9 +308,13 @@ func ProvideUpstreamBillingProbeService(
 	settingService *SettingService,
 	lockCache LeaderLockCache,
 	db *sql.DB,
+	autoRateService *GroupAutoRateService,
 ) *UpstreamBillingProbeService {
 	svc := NewUpstreamBillingProbeService(accountRepo, accountTestService, settingService)
 	svc.SetLeaderLock(lockCache, db)
+	if autoRateService != nil {
+		svc.SetGroupAutoRateSyncer(autoRateService)
+	}
 	svc.Start()
 	return svc
 }
@@ -744,6 +756,7 @@ func (s *UpstreamBillingProbeService) probeLoadedAccount(ctx context.Context, ac
 			"old_rate_multiplier", previousRate,
 			"new_rate_multiplier", *syncRate,
 		)
+		syncAutoRateBestEffortAccounts(ctx, s.groupAutoRateSyncer, "upstream_billing_probe", account.ID)
 	}
 	return snapshot, nil
 }

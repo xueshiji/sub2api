@@ -1257,6 +1257,20 @@ func init() {
 	groupDescCacheHitRateAdjustment := groupFields[71].Descriptor()
 	// group.DefaultCacheHitRateAdjustment holds the default value on creation for the cache_hit_rate_adjustment field.
 	group.DefaultCacheHitRateAdjustment = groupDescCacheHitRateAdjustment.Default.(float64)
+	// groupDescAutoRateEnabled is the schema descriptor for auto_rate_enabled field.
+	groupDescAutoRateEnabled := groupFields[72].Descriptor()
+	// group.DefaultAutoRateEnabled holds the default value on creation for the auto_rate_enabled field.
+	group.DefaultAutoRateEnabled = groupDescAutoRateEnabled.Default.(bool)
+	// groupDescAutoRateMode is the schema descriptor for auto_rate_mode field.
+	groupDescAutoRateMode := groupFields[73].Descriptor()
+	// group.DefaultAutoRateMode holds the default value on creation for the auto_rate_mode field.
+	group.DefaultAutoRateMode = groupDescAutoRateMode.Default.(string)
+	// group.AutoRateModeValidator is a validator for the "auto_rate_mode" field. It is called by the builders before save.
+	group.AutoRateModeValidator = groupDescAutoRateMode.Validators[0].(func(string) error)
+	// groupDescAutoRateValue is the schema descriptor for auto_rate_value field.
+	groupDescAutoRateValue := groupFields[74].Descriptor()
+	// group.DefaultAutoRateValue holds the default value on creation for the auto_rate_value field.
+	group.DefaultAutoRateValue = groupDescAutoRateValue.Default.(float64)
 	idempotencyrecordMixin := schema.IdempotencyRecord{}.Mixin()
 	idempotencyrecordMixinFields0 := idempotencyrecordMixin[0].Fields()
 	_ = idempotencyrecordMixinFields0

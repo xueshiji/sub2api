@@ -170,6 +170,12 @@ type Group struct {
 	ProfitSafetyBuffer float64 `json:"profit_safety_buffer,omitempty"`
 	// 缓存命中率修正比例（小数 0~0.10，如 0.05 表示扣减 5%）；真实缓存命中率大于 10% 时生效
 	CacheHitRateAdjustment float64 `json:"cache_hit_rate_adjustment,omitempty"`
+	// 是否启用基于分组下最高上游账号倍率的自动分组倍率
+	AutoRateEnabled bool `json:"auto_rate_enabled,omitempty"`
+	// 自动倍率加价模式：percentage（百分比）或 fixed（固定加价）
+	AutoRateMode string `json:"auto_rate_mode,omitempty"`
+	// 自动倍率加价值（percentage 存小数如 0.20，fixed 存固定加价值；>= 0）
+	AutoRateValue float64 `json:"auto_rate_value,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
 	// The values are being populated by the GroupQuery when eager-loading is set.
 	Edges        GroupEdges `json:"edges"`
@@ -278,13 +284,13 @@ func (*Group) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case group.FieldI18n, group.FieldPeakModelMultipliers, group.FieldVideoModelPrices, group.FieldModelPricing, group.FieldModelRouting, group.FieldSupportedModelScopes, group.FieldMessagesDispatchModelConfig, group.FieldModelAllowlist, group.FieldCodexModelsManifestConfig, group.FieldReasoningEffortMappings:
 			values[i] = new([]byte)
-		case group.FieldPeakRateEnabled, group.FieldIsExclusive, group.FieldAllowImageGeneration, group.FieldAllowBatchImageGeneration, group.FieldImageCountBilling, group.FieldImageRateIndependent, group.FieldVideoRateIndependent, group.FieldLongContextPricingEnabled, group.FieldClaudeCodeOnly, group.FieldModelRoutingEnabled, group.FieldMcpXMLInject, group.FieldAllowMessagesDispatch, group.FieldAllowLive, group.FieldForceOpenaiFast, group.FieldForceOpenaiUltrafast, group.FieldFreeOpenaiFast, group.FieldRequireOauthOnly, group.FieldRequirePrivacySet, group.FieldProfitControlEnabled:
+		case group.FieldPeakRateEnabled, group.FieldIsExclusive, group.FieldAllowImageGeneration, group.FieldAllowBatchImageGeneration, group.FieldImageCountBilling, group.FieldImageRateIndependent, group.FieldVideoRateIndependent, group.FieldLongContextPricingEnabled, group.FieldClaudeCodeOnly, group.FieldModelRoutingEnabled, group.FieldMcpXMLInject, group.FieldAllowMessagesDispatch, group.FieldAllowLive, group.FieldForceOpenaiFast, group.FieldForceOpenaiUltrafast, group.FieldFreeOpenaiFast, group.FieldRequireOauthOnly, group.FieldRequirePrivacySet, group.FieldProfitControlEnabled, group.FieldAutoRateEnabled:
 			values[i] = new(sql.NullBool)
-		case group.FieldRateMultiplier, group.FieldPeakRateMultiplier, group.FieldOffPeakRateMultiplier, group.FieldDailyLimitUsd, group.FieldWeeklyLimitUsd, group.FieldMonthlyLimitUsd, group.FieldImageRateMultiplier, group.FieldImagePrice1k, group.FieldImagePrice2k, group.FieldImagePrice4k, group.FieldBatchImageDiscountMultiplier, group.FieldBatchImageHoldMultiplier, group.FieldVideoRateMultiplier, group.FieldVideoPrice480p, group.FieldVideoPrice720p, group.FieldVideoPrice1080p, group.FieldWebSearchPricePerCall, group.FieldSearchPricePer1k, group.FieldAudioRealtimePricePerMin, group.FieldAudioTtsPricePerMillionChars, group.FieldAudioSttPricePerHour, group.FieldProfitMinMargin, group.FieldProfitSafetyBuffer, group.FieldCacheHitRateAdjustment:
+		case group.FieldRateMultiplier, group.FieldPeakRateMultiplier, group.FieldOffPeakRateMultiplier, group.FieldDailyLimitUsd, group.FieldWeeklyLimitUsd, group.FieldMonthlyLimitUsd, group.FieldImageRateMultiplier, group.FieldImagePrice1k, group.FieldImagePrice2k, group.FieldImagePrice4k, group.FieldBatchImageDiscountMultiplier, group.FieldBatchImageHoldMultiplier, group.FieldVideoRateMultiplier, group.FieldVideoPrice480p, group.FieldVideoPrice720p, group.FieldVideoPrice1080p, group.FieldWebSearchPricePerCall, group.FieldSearchPricePer1k, group.FieldAudioRealtimePricePerMin, group.FieldAudioTtsPricePerMillionChars, group.FieldAudioSttPricePerHour, group.FieldProfitMinMargin, group.FieldProfitSafetyBuffer, group.FieldCacheHitRateAdjustment, group.FieldAutoRateValue:
 			values[i] = new(sql.NullFloat64)
 		case group.FieldID, group.FieldDailyLimitTokens, group.FieldWeeklyLimitTokens, group.FieldMonthlyLimitTokens, group.FieldDefaultValidityDays, group.FieldFallbackGroupID, group.FieldFallbackGroupIDOnInvalidRequest, group.FieldSortOrder, group.FieldRpmLimit:
 			values[i] = new(sql.NullInt64)
-		case group.FieldName, group.FieldDescription, group.FieldPeakStart, group.FieldPeakEnd, group.FieldStatus, group.FieldDuplicateOperationID, group.FieldPlatform, group.FieldSubscriptionType, group.FieldDefaultMappedModel, group.FieldMaxReasoningEffort, group.FieldMaxReasoningEffortOverLimit:
+		case group.FieldName, group.FieldDescription, group.FieldPeakStart, group.FieldPeakEnd, group.FieldStatus, group.FieldDuplicateOperationID, group.FieldPlatform, group.FieldSubscriptionType, group.FieldDefaultMappedModel, group.FieldMaxReasoningEffort, group.FieldMaxReasoningEffortOverLimit, group.FieldAutoRateMode:
 			values[i] = new(sql.NullString)
 		case group.FieldCreatedAt, group.FieldUpdatedAt, group.FieldDeletedAt:
 			values[i] = new(sql.NullTime)
@@ -801,6 +807,24 @@ func (_m *Group) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.CacheHitRateAdjustment = value.Float64
 			}
+		case group.FieldAutoRateEnabled:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field auto_rate_enabled", values[i])
+			} else if value.Valid {
+				_m.AutoRateEnabled = value.Bool
+			}
+		case group.FieldAutoRateMode:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field auto_rate_mode", values[i])
+			} else if value.Valid {
+				_m.AutoRateMode = value.String
+			}
+		case group.FieldAutoRateValue:
+			if value, ok := values[i].(*sql.NullFloat64); !ok {
+				return fmt.Errorf("unexpected type %T for field auto_rate_value", values[i])
+			} else if value.Valid {
+				_m.AutoRateValue = value.Float64
+			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
 		}
@@ -1145,6 +1169,15 @@ func (_m *Group) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("cache_hit_rate_adjustment=")
 	builder.WriteString(fmt.Sprintf("%v", _m.CacheHitRateAdjustment))
+	builder.WriteString(", ")
+	builder.WriteString("auto_rate_enabled=")
+	builder.WriteString(fmt.Sprintf("%v", _m.AutoRateEnabled))
+	builder.WriteString(", ")
+	builder.WriteString("auto_rate_mode=")
+	builder.WriteString(_m.AutoRateMode)
+	builder.WriteString(", ")
+	builder.WriteString("auto_rate_value=")
+	builder.WriteString(fmt.Sprintf("%v", _m.AutoRateValue))
 	builder.WriteByte(')')
 	return builder.String()
 }

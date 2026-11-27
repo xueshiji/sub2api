@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
+	"math"
 	"net/http"
 	"strings"
 	"time"
@@ -532,6 +534,21 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		cacheHitRateAdjustment = NormalizeCacheHitRateAdjustment(*input.CacheHitRateAdjustment)
 	}
 
+	autoRateValue := 0.0
+	if input.AutoRateValue != nil {
+		autoRateValue = *input.AutoRateValue
+	}
+	autoRateCfg := NormalizeGroupAutoRateConfig(GroupAutoRateConfig{
+		Platform:         platform,
+		SubscriptionType: subscriptionType,
+		Enabled:          input.AutoRateEnabled,
+		Mode:             input.AutoRateMode,
+		Value:            autoRateValue,
+	})
+	if err := ValidateGroupAutoRateConfig(autoRateCfg); err != nil {
+		return nil, infraerrors.BadRequest("INVALID_AUTO_RATE_CONFIG", err.Error())
+	}
+
 	// 校验降级分组
 	if input.FallbackGroupID != nil {
 		if err := s.validateFallbackGroup(ctx, 0, *input.FallbackGroupID); err != nil {
@@ -634,6 +651,9 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		ProfitMinMargin:                 profitMinMargin,
 		ProfitSafetyBuffer:              profitSafetyBuffer,
 		CacheHitRateAdjustment:          cacheHitRateAdjustment,
+		AutoRateEnabled:                 autoRateCfg.Enabled,
+		AutoRateMode:                    autoRateCfg.Mode,
+		AutoRateValue:                   autoRateCfg.Value,
 		ImagePrice1K:                    imagePrice1K,
 		ImagePrice2K:                    imagePrice2K,
 		ImagePrice4K:                    imagePrice4K,
@@ -707,6 +727,15 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 			return nil, fmt.Errorf("failed to bind accounts to new group: %w", err)
 		}
 		group.AccountCount = int64(len(accountIDsToCopy))
+	}
+
+	if group.AutoRateEnabled && s.autoRateService != nil {
+		if syncErr := s.autoRateService.SyncAutoRateForGroups(ctx, group.ID); syncErr != nil {
+			slog.Warn("create_group_auto_rate_sync_failed", "group_id", group.ID, "error", syncErr)
+		} else if refreshed, getErr := s.groupRepo.GetByID(ctx, group.ID); getErr == nil && refreshed != nil {
+			refreshed.AccountCount = group.AccountCount
+			group = refreshed
+		}
 	}
 
 	return group, nil
@@ -822,6 +851,7 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 
 	// 渠道缓存里存了 groupID → platform 的映射，改了平台要让它失效（见函数末尾）
 	previousPlatform := group.Platform
+	previousRateMultiplier := group.RateMultiplier
 
 	if input.Name != "" {
 		group.Name = input.Name
@@ -1006,6 +1036,31 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 			return nil, infraerrors.BadRequest("INVALID_CACHE_HIT_RATE_ADJUSTMENT", err.Error())
 		}
 		group.CacheHitRateAdjustment = NormalizeCacheHitRateAdjustment(*input.CacheHitRateAdjustment)
+	}
+	if input.AutoRateEnabled != nil {
+		group.AutoRateEnabled = *input.AutoRateEnabled
+	}
+	if input.AutoRateMode != nil {
+		group.AutoRateMode = *input.AutoRateMode
+	}
+	if input.AutoRateValue != nil {
+		group.AutoRateValue = *input.AutoRateValue
+	}
+	autoRateCfg := NormalizeGroupAutoRateConfig(GroupAutoRateConfig{
+		Platform:         group.Platform,
+		SubscriptionType: group.SubscriptionType,
+		Enabled:          group.AutoRateEnabled,
+		Mode:             group.AutoRateMode,
+		Value:            group.AutoRateValue,
+	})
+	group.AutoRateEnabled = autoRateCfg.Enabled
+	group.AutoRateMode = autoRateCfg.Mode
+	group.AutoRateValue = autoRateCfg.Value
+	if err := ValidateGroupAutoRateConfig(autoRateCfg); err != nil {
+		return nil, infraerrors.BadRequest("INVALID_AUTO_RATE_CONFIG", err.Error())
+	}
+	if group.AutoRateEnabled && input.RateMultiplier != nil && math.Abs(*input.RateMultiplier-previousRateMultiplier) > groupAutoRateEpsilon {
+		return nil, ErrGroupAutoRateConflict
 	}
 	if input.ImagePrice1K != nil {
 		group.ImagePrice1K = normalizePrice(input.ImagePrice1K)
@@ -1267,7 +1322,131 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 		}
 	}
 
+	if group.AutoRateEnabled && s.autoRateService != nil {
+		if syncErr := s.autoRateService.SyncAutoRateForGroups(ctx, id); syncErr != nil {
+			slog.Warn("update_group_auto_rate_sync_failed", "group_id", id, "error", syncErr)
+		} else if refreshed, getErr := s.groupRepo.GetByID(ctx, id); getErr == nil && refreshed != nil {
+			group = refreshed
+		}
+	}
+
 	return group, nil
+}
+
+// GetGroupAutoRatePreview returns the highest eligible account rate and computed preview rate.
+func (s *adminServiceImpl) GetGroupAutoRatePreview(ctx context.Context, id int64, mode *string, value *float64, sourceGroupID *int64, requireOAuthOnly *bool) (*GroupAutoRatePreview, error) {
+	previewMode := GroupAutoRateModePercentage
+	if mode != nil && strings.TrimSpace(*mode) != "" {
+		previewMode = *mode
+	}
+	previewValue := 0.0
+	if value != nil {
+		previewValue = *value
+	}
+	if previewValue < 0 || math.IsNaN(previewValue) || math.IsInf(previewValue, 0) {
+		return nil, infraerrors.BadRequest("INVALID_AUTO_RATE_CONFIG", "auto_rate_value must be >= 0")
+	}
+
+	if id <= 0 {
+		var summary *GroupAutoRateEligibleSummary
+		if sourceGroupID != nil && *sourceGroupID > 0 {
+			srcGroup, err := s.groupRepo.GetByIDLite(ctx, *sourceGroupID)
+			if err != nil {
+				return nil, err
+			}
+			if !canCopyAccountsFromGroupPlatform(PlatformOpenAI, srcGroup.Platform) {
+				return nil, infraerrors.BadRequest("SOURCE_GROUP_PLATFORM_MISMATCH", fmt.Sprintf("source group %d platform mismatch: expected %s, got %s", *sourceGroupID, PlatformOpenAI, srcGroup.Platform))
+			}
+			excludeAPIKey := requireOAuthOnly != nil && *requireOAuthOnly
+			if s.autoRateService != nil {
+				summary, err = s.autoRateService.GetEligibleSummary(ctx, *sourceGroupID, excludeAPIKey)
+				if err != nil {
+					return nil, err
+				}
+			}
+		}
+		return BuildGroupAutoRatePreview(true, summary, previewMode, previewValue), nil
+	}
+
+	group, err := s.groupRepo.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.validateSimpleModeGroupAccess(group); err != nil {
+		return nil, err
+	}
+
+	if mode == nil || strings.TrimSpace(*mode) == "" {
+		if strings.TrimSpace(group.AutoRateMode) != "" {
+			previewMode = group.AutoRateMode
+		}
+	}
+	if value == nil {
+		previewValue = group.AutoRateValue
+	}
+	supported := GroupSupportsAutoRate(group.Platform, group.SubscriptionType)
+	if !supported {
+		return BuildGroupAutoRatePreview(false, nil, previewMode, previewValue), nil
+	}
+
+	targetSummaryGroupID := id
+	excludeAPIKey := false
+	if sourceGroupID != nil && *sourceGroupID > 0 && *sourceGroupID != id {
+		srcGroup, err := s.groupRepo.GetByIDLite(ctx, *sourceGroupID)
+		if err != nil {
+			return nil, err
+		}
+		if !canCopyAccountsFromGroupPlatform(group.Platform, srcGroup.Platform) {
+			return nil, infraerrors.BadRequest("SOURCE_GROUP_PLATFORM_MISMATCH", fmt.Sprintf("source group %d platform mismatch: expected %s, got %s", *sourceGroupID, group.Platform, srcGroup.Platform))
+		}
+		targetSummaryGroupID = *sourceGroupID
+		effectiveRequireOAuthOnly := group.RequireOAuthOnly
+		if requireOAuthOnly != nil {
+			effectiveRequireOAuthOnly = *requireOAuthOnly
+		}
+		excludeAPIKey = effectiveRequireOAuthOnly && groupSupportsOAuthOnlyFilter(group.Platform)
+	}
+
+	var summary *GroupAutoRateEligibleSummary
+	if s.autoRateService != nil {
+		summary, err = s.autoRateService.GetEligibleSummary(ctx, targetSummaryGroupID, excludeAPIKey)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return BuildGroupAutoRatePreview(true, summary, previewMode, previewValue), nil
+}
+
+// RecalculateGroupAutoRate manually triggers automatic rate recalculation for a group.
+func (s *adminServiceImpl) RecalculateGroupAutoRate(ctx context.Context, id int64) (*Group, *GroupAutoRatePreview, error) {
+	group, err := s.groupRepo.GetByID(ctx, id)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := s.validateSimpleModeGroupAccess(group); err != nil {
+		return nil, nil, err
+	}
+	if !GroupSupportsAutoRate(group.Platform, group.SubscriptionType) || !group.AutoRateEnabled {
+		return nil, nil, infraerrors.BadRequest("GROUP_AUTO_RATE_NOT_ENABLED", "auto rate is not enabled for this group")
+	}
+	if s.autoRateService != nil {
+		if err := s.autoRateService.SyncAutoRateForGroups(ctx, id); err != nil {
+			return nil, nil, err
+		}
+	}
+	updated, err := s.groupRepo.GetByID(ctx, id)
+	if err != nil {
+		return nil, nil, err
+	}
+	var summary *GroupAutoRateEligibleSummary
+	if s.autoRateService != nil {
+		summary, err = s.autoRateService.GetEligibleSummary(ctx, id, false)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+	preview := BuildGroupAutoRatePreview(true, summary, updated.AutoRateMode, updated.AutoRateValue)
+	return updated, preview, nil
 }
 
 func normalizeGroupModelPricing(platform string, pricing []ChannelModelPricing) ([]ChannelModelPricing, error) {

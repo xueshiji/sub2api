@@ -1060,6 +1060,9 @@ func groupEntityToService(g *dbent.Group) *service.Group {
 		ProfitMinMargin:                 g.ProfitMinMargin,
 		ProfitSafetyBuffer:              g.ProfitSafetyBuffer,
 		CacheHitRateAdjustment:          g.CacheHitRateAdjustment,
+		AutoRateEnabled:                 g.AutoRateEnabled,
+		AutoRateMode:                    g.AutoRateMode,
+		AutoRateValue:                   g.AutoRateValue,
 		CreatedAt:                       g.CreatedAt,
 		UpdatedAt:                       g.UpdatedAt,
 	}

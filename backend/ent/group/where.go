@@ -380,6 +380,21 @@ func CacheHitRateAdjustment(v float64) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldCacheHitRateAdjustment, v))
 }
 
+// AutoRateEnabled applies equality check predicate on the "auto_rate_enabled" field. It's identical to AutoRateEnabledEQ.
+func AutoRateEnabled(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldAutoRateEnabled, v))
+}
+
+// AutoRateMode applies equality check predicate on the "auto_rate_mode" field. It's identical to AutoRateModeEQ.
+func AutoRateMode(v string) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldAutoRateMode, v))
+}
+
+// AutoRateValue applies equality check predicate on the "auto_rate_value" field. It's identical to AutoRateValueEQ.
+func AutoRateValue(v float64) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldAutoRateValue, v))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldCreatedAt, v))
@@ -2943,6 +2958,121 @@ func CacheHitRateAdjustmentLT(v float64) predicate.Group {
 // CacheHitRateAdjustmentLTE applies the LTE predicate on the "cache_hit_rate_adjustment" field.
 func CacheHitRateAdjustmentLTE(v float64) predicate.Group {
 	return predicate.Group(sql.FieldLTE(FieldCacheHitRateAdjustment, v))
+}
+
+// AutoRateEnabledEQ applies the EQ predicate on the "auto_rate_enabled" field.
+func AutoRateEnabledEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldAutoRateEnabled, v))
+}
+
+// AutoRateEnabledNEQ applies the NEQ predicate on the "auto_rate_enabled" field.
+func AutoRateEnabledNEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldAutoRateEnabled, v))
+}
+
+// AutoRateModeEQ applies the EQ predicate on the "auto_rate_mode" field.
+func AutoRateModeEQ(v string) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldAutoRateMode, v))
+}
+
+// AutoRateModeNEQ applies the NEQ predicate on the "auto_rate_mode" field.
+func AutoRateModeNEQ(v string) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldAutoRateMode, v))
+}
+
+// AutoRateModeIn applies the In predicate on the "auto_rate_mode" field.
+func AutoRateModeIn(vs ...string) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldAutoRateMode, vs...))
+}
+
+// AutoRateModeNotIn applies the NotIn predicate on the "auto_rate_mode" field.
+func AutoRateModeNotIn(vs ...string) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldAutoRateMode, vs...))
+}
+
+// AutoRateModeGT applies the GT predicate on the "auto_rate_mode" field.
+func AutoRateModeGT(v string) predicate.Group {
+	return predicate.Group(sql.FieldGT(FieldAutoRateMode, v))
+}
+
+// AutoRateModeGTE applies the GTE predicate on the "auto_rate_mode" field.
+func AutoRateModeGTE(v string) predicate.Group {
+	return predicate.Group(sql.FieldGTE(FieldAutoRateMode, v))
+}
+
+// AutoRateModeLT applies the LT predicate on the "auto_rate_mode" field.
+func AutoRateModeLT(v string) predicate.Group {
+	return predicate.Group(sql.FieldLT(FieldAutoRateMode, v))
+}
+
+// AutoRateModeLTE applies the LTE predicate on the "auto_rate_mode" field.
+func AutoRateModeLTE(v string) predicate.Group {
+	return predicate.Group(sql.FieldLTE(FieldAutoRateMode, v))
+}
+
+// AutoRateModeContains applies the Contains predicate on the "auto_rate_mode" field.
+func AutoRateModeContains(v string) predicate.Group {
+	return predicate.Group(sql.FieldContains(FieldAutoRateMode, v))
+}
+
+// AutoRateModeHasPrefix applies the HasPrefix predicate on the "auto_rate_mode" field.
+func AutoRateModeHasPrefix(v string) predicate.Group {
+	return predicate.Group(sql.FieldHasPrefix(FieldAutoRateMode, v))
+}
+
+// AutoRateModeHasSuffix applies the HasSuffix predicate on the "auto_rate_mode" field.
+func AutoRateModeHasSuffix(v string) predicate.Group {
+	return predicate.Group(sql.FieldHasSuffix(FieldAutoRateMode, v))
+}
+
+// AutoRateModeEqualFold applies the EqualFold predicate on the "auto_rate_mode" field.
+func AutoRateModeEqualFold(v string) predicate.Group {
+	return predicate.Group(sql.FieldEqualFold(FieldAutoRateMode, v))
+}
+
+// AutoRateModeContainsFold applies the ContainsFold predicate on the "auto_rate_mode" field.
+func AutoRateModeContainsFold(v string) predicate.Group {
+	return predicate.Group(sql.FieldContainsFold(FieldAutoRateMode, v))
+}
+
+// AutoRateValueEQ applies the EQ predicate on the "auto_rate_value" field.
+func AutoRateValueEQ(v float64) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldAutoRateValue, v))
+}
+
+// AutoRateValueNEQ applies the NEQ predicate on the "auto_rate_value" field.
+func AutoRateValueNEQ(v float64) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldAutoRateValue, v))
+}
+
+// AutoRateValueIn applies the In predicate on the "auto_rate_value" field.
+func AutoRateValueIn(vs ...float64) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldAutoRateValue, vs...))
+}
+
+// AutoRateValueNotIn applies the NotIn predicate on the "auto_rate_value" field.
+func AutoRateValueNotIn(vs ...float64) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldAutoRateValue, vs...))
+}
+
+// AutoRateValueGT applies the GT predicate on the "auto_rate_value" field.
+func AutoRateValueGT(v float64) predicate.Group {
+	return predicate.Group(sql.FieldGT(FieldAutoRateValue, v))
+}
+
+// AutoRateValueGTE applies the GTE predicate on the "auto_rate_value" field.
+func AutoRateValueGTE(v float64) predicate.Group {
+	return predicate.Group(sql.FieldGTE(FieldAutoRateValue, v))
+}
+
+// AutoRateValueLT applies the LT predicate on the "auto_rate_value" field.
+func AutoRateValueLT(v float64) predicate.Group {
+	return predicate.Group(sql.FieldLT(FieldAutoRateValue, v))
+}
+
+// AutoRateValueLTE applies the LTE predicate on the "auto_rate_value" field.
+func AutoRateValueLTE(v float64) predicate.Group {
+	return predicate.Group(sql.FieldLTE(FieldAutoRateValue, v))
 }
 
 // HasAPIKeys applies the HasEdge predicate on the "api_keys" edge.

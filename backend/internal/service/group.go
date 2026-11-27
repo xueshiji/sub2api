@@ -147,6 +147,11 @@ type Group struct {
 	// 缓存命中率修正比例（小数 0~0.10，对应 0%~10%，0 表示关闭）。
 	CacheHitRateAdjustment float64
 
+	// OpenAI 按量分组自动倍率配置（migration 254）。
+	AutoRateEnabled bool
+	AutoRateMode    string
+	AutoRateValue   float64
+
 	CreatedAt time.Time
 	UpdatedAt time.Time
 

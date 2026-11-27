@@ -1387,6 +1387,55 @@ func (_u *GroupUpdate) AddCacheHitRateAdjustment(v float64) *GroupUpdate {
 	return _u
 }
 
+// SetAutoRateEnabled sets the "auto_rate_enabled" field.
+func (_u *GroupUpdate) SetAutoRateEnabled(v bool) *GroupUpdate {
+	_u.mutation.SetAutoRateEnabled(v)
+	return _u
+}
+
+// SetNillableAutoRateEnabled sets the "auto_rate_enabled" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableAutoRateEnabled(v *bool) *GroupUpdate {
+	if v != nil {
+		_u.SetAutoRateEnabled(*v)
+	}
+	return _u
+}
+
+// SetAutoRateMode sets the "auto_rate_mode" field.
+func (_u *GroupUpdate) SetAutoRateMode(v string) *GroupUpdate {
+	_u.mutation.SetAutoRateMode(v)
+	return _u
+}
+
+// SetNillableAutoRateMode sets the "auto_rate_mode" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableAutoRateMode(v *string) *GroupUpdate {
+	if v != nil {
+		_u.SetAutoRateMode(*v)
+	}
+	return _u
+}
+
+// SetAutoRateValue sets the "auto_rate_value" field.
+func (_u *GroupUpdate) SetAutoRateValue(v float64) *GroupUpdate {
+	_u.mutation.ResetAutoRateValue()
+	_u.mutation.SetAutoRateValue(v)
+	return _u
+}
+
+// SetNillableAutoRateValue sets the "auto_rate_value" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableAutoRateValue(v *float64) *GroupUpdate {
+	if v != nil {
+		_u.SetAutoRateValue(*v)
+	}
+	return _u
+}
+
+// AddAutoRateValue adds value to the "auto_rate_value" field.
+func (_u *GroupUpdate) AddAutoRateValue(v float64) *GroupUpdate {
+	_u.mutation.AddAutoRateValue(v)
+	return _u
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_u *GroupUpdate) AddAPIKeyIDs(ids ...int64) *GroupUpdate {
 	_u.mutation.AddAPIKeyIDs(ids...)
@@ -1715,6 +1764,11 @@ func (_u *GroupUpdate) check() error {
 	if v, ok := _u.mutation.MaxReasoningEffortOverLimit(); ok {
 		if err := group.MaxReasoningEffortOverLimitValidator(v); err != nil {
 			return &ValidationError{Name: "max_reasoning_effort_over_limit", err: fmt.Errorf(`ent: validator failed for field "Group.max_reasoning_effort_over_limit": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.AutoRateMode(); ok {
+		if err := group.AutoRateModeValidator(v); err != nil {
+			return &ValidationError{Name: "auto_rate_mode", err: fmt.Errorf(`ent: validator failed for field "Group.auto_rate_mode": %w`, err)}
 		}
 	}
 	return nil
@@ -2139,6 +2193,18 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.AddedCacheHitRateAdjustment(); ok {
 		_spec.AddField(group.FieldCacheHitRateAdjustment, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AutoRateEnabled(); ok {
+		_spec.SetField(group.FieldAutoRateEnabled, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.AutoRateMode(); ok {
+		_spec.SetField(group.FieldAutoRateMode, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.AutoRateValue(); ok {
+		_spec.SetField(group.FieldAutoRateValue, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedAutoRateValue(); ok {
+		_spec.AddField(group.FieldAutoRateValue, field.TypeFloat64, value)
 	}
 	if _u.mutation.APIKeysCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -3804,6 +3870,55 @@ func (_u *GroupUpdateOne) AddCacheHitRateAdjustment(v float64) *GroupUpdateOne {
 	return _u
 }
 
+// SetAutoRateEnabled sets the "auto_rate_enabled" field.
+func (_u *GroupUpdateOne) SetAutoRateEnabled(v bool) *GroupUpdateOne {
+	_u.mutation.SetAutoRateEnabled(v)
+	return _u
+}
+
+// SetNillableAutoRateEnabled sets the "auto_rate_enabled" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableAutoRateEnabled(v *bool) *GroupUpdateOne {
+	if v != nil {
+		_u.SetAutoRateEnabled(*v)
+	}
+	return _u
+}
+
+// SetAutoRateMode sets the "auto_rate_mode" field.
+func (_u *GroupUpdateOne) SetAutoRateMode(v string) *GroupUpdateOne {
+	_u.mutation.SetAutoRateMode(v)
+	return _u
+}
+
+// SetNillableAutoRateMode sets the "auto_rate_mode" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableAutoRateMode(v *string) *GroupUpdateOne {
+	if v != nil {
+		_u.SetAutoRateMode(*v)
+	}
+	return _u
+}
+
+// SetAutoRateValue sets the "auto_rate_value" field.
+func (_u *GroupUpdateOne) SetAutoRateValue(v float64) *GroupUpdateOne {
+	_u.mutation.ResetAutoRateValue()
+	_u.mutation.SetAutoRateValue(v)
+	return _u
+}
+
+// SetNillableAutoRateValue sets the "auto_rate_value" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableAutoRateValue(v *float64) *GroupUpdateOne {
+	if v != nil {
+		_u.SetAutoRateValue(*v)
+	}
+	return _u
+}
+
+// AddAutoRateValue adds value to the "auto_rate_value" field.
+func (_u *GroupUpdateOne) AddAutoRateValue(v float64) *GroupUpdateOne {
+	_u.mutation.AddAutoRateValue(v)
+	return _u
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_u *GroupUpdateOne) AddAPIKeyIDs(ids ...int64) *GroupUpdateOne {
 	_u.mutation.AddAPIKeyIDs(ids...)
@@ -4145,6 +4260,11 @@ func (_u *GroupUpdateOne) check() error {
 	if v, ok := _u.mutation.MaxReasoningEffortOverLimit(); ok {
 		if err := group.MaxReasoningEffortOverLimitValidator(v); err != nil {
 			return &ValidationError{Name: "max_reasoning_effort_over_limit", err: fmt.Errorf(`ent: validator failed for field "Group.max_reasoning_effort_over_limit": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.AutoRateMode(); ok {
+		if err := group.AutoRateModeValidator(v); err != nil {
+			return &ValidationError{Name: "auto_rate_mode", err: fmt.Errorf(`ent: validator failed for field "Group.auto_rate_mode": %w`, err)}
 		}
 	}
 	return nil
@@ -4586,6 +4706,18 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if value, ok := _u.mutation.AddedCacheHitRateAdjustment(); ok {
 		_spec.AddField(group.FieldCacheHitRateAdjustment, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AutoRateEnabled(); ok {
+		_spec.SetField(group.FieldAutoRateEnabled, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.AutoRateMode(); ok {
+		_spec.SetField(group.FieldAutoRateMode, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.AutoRateValue(); ok {
+		_spec.SetField(group.FieldAutoRateValue, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedAutoRateValue(); ok {
+		_spec.AddField(group.FieldAutoRateValue, field.TypeFloat64, value)
 	}
 	if _u.mutation.APIKeysCleared() {
 		edge := &sqlgraph.EdgeSpec{

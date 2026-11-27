@@ -22191,6 +22191,10 @@ type GroupMutation struct {
 	addprofit_safety_buffer                 *float64
 	cache_hit_rate_adjustment               *float64
 	addcache_hit_rate_adjustment            *float64
+	auto_rate_enabled                       *bool
+	auto_rate_mode                          *string
+	auto_rate_value                         *float64
+	addauto_rate_value                      *float64
 	clearedFields                           map[string]struct{}
 	api_keys                                map[int64]struct{}
 	removedapi_keys                         map[int64]struct{}
@@ -26056,6 +26060,134 @@ func (m *GroupMutation) ResetCacheHitRateAdjustment() {
 	m.addcache_hit_rate_adjustment = nil
 }
 
+// SetAutoRateEnabled sets the "auto_rate_enabled" field.
+func (m *GroupMutation) SetAutoRateEnabled(b bool) {
+	m.auto_rate_enabled = &b
+}
+
+// AutoRateEnabled returns the value of the "auto_rate_enabled" field in the mutation.
+func (m *GroupMutation) AutoRateEnabled() (r bool, exists bool) {
+	v := m.auto_rate_enabled
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAutoRateEnabled returns the old "auto_rate_enabled" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldAutoRateEnabled(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAutoRateEnabled is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAutoRateEnabled requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAutoRateEnabled: %w", err)
+	}
+	return oldValue.AutoRateEnabled, nil
+}
+
+// ResetAutoRateEnabled resets all changes to the "auto_rate_enabled" field.
+func (m *GroupMutation) ResetAutoRateEnabled() {
+	m.auto_rate_enabled = nil
+}
+
+// SetAutoRateMode sets the "auto_rate_mode" field.
+func (m *GroupMutation) SetAutoRateMode(s string) {
+	m.auto_rate_mode = &s
+}
+
+// AutoRateMode returns the value of the "auto_rate_mode" field in the mutation.
+func (m *GroupMutation) AutoRateMode() (r string, exists bool) {
+	v := m.auto_rate_mode
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAutoRateMode returns the old "auto_rate_mode" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldAutoRateMode(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAutoRateMode is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAutoRateMode requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAutoRateMode: %w", err)
+	}
+	return oldValue.AutoRateMode, nil
+}
+
+// ResetAutoRateMode resets all changes to the "auto_rate_mode" field.
+func (m *GroupMutation) ResetAutoRateMode() {
+	m.auto_rate_mode = nil
+}
+
+// SetAutoRateValue sets the "auto_rate_value" field.
+func (m *GroupMutation) SetAutoRateValue(f float64) {
+	m.auto_rate_value = &f
+	m.addauto_rate_value = nil
+}
+
+// AutoRateValue returns the value of the "auto_rate_value" field in the mutation.
+func (m *GroupMutation) AutoRateValue() (r float64, exists bool) {
+	v := m.auto_rate_value
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAutoRateValue returns the old "auto_rate_value" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldAutoRateValue(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAutoRateValue is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAutoRateValue requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAutoRateValue: %w", err)
+	}
+	return oldValue.AutoRateValue, nil
+}
+
+// AddAutoRateValue adds f to the "auto_rate_value" field.
+func (m *GroupMutation) AddAutoRateValue(f float64) {
+	if m.addauto_rate_value != nil {
+		*m.addauto_rate_value += f
+	} else {
+		m.addauto_rate_value = &f
+	}
+}
+
+// AddedAutoRateValue returns the value that was added to the "auto_rate_value" field in this mutation.
+func (m *GroupMutation) AddedAutoRateValue() (r float64, exists bool) {
+	v := m.addauto_rate_value
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetAutoRateValue resets all changes to the "auto_rate_value" field.
+func (m *GroupMutation) ResetAutoRateValue() {
+	m.auto_rate_value = nil
+	m.addauto_rate_value = nil
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by ids.
 func (m *GroupMutation) AddAPIKeyIDs(ids ...int64) {
 	if m.api_keys == nil {
@@ -26414,7 +26546,7 @@ func (m *GroupMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GroupMutation) Fields() []string {
-	fields := make([]string, 0, 75)
+	fields := make([]string, 0, 78)
 	if m.created_at != nil {
 		fields = append(fields, group.FieldCreatedAt)
 	}
@@ -26640,6 +26772,15 @@ func (m *GroupMutation) Fields() []string {
 	if m.cache_hit_rate_adjustment != nil {
 		fields = append(fields, group.FieldCacheHitRateAdjustment)
 	}
+	if m.auto_rate_enabled != nil {
+		fields = append(fields, group.FieldAutoRateEnabled)
+	}
+	if m.auto_rate_mode != nil {
+		fields = append(fields, group.FieldAutoRateMode)
+	}
+	if m.auto_rate_value != nil {
+		fields = append(fields, group.FieldAutoRateValue)
+	}
 	return fields
 }
 
@@ -26798,6 +26939,12 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.ProfitSafetyBuffer()
 	case group.FieldCacheHitRateAdjustment:
 		return m.CacheHitRateAdjustment()
+	case group.FieldAutoRateEnabled:
+		return m.AutoRateEnabled()
+	case group.FieldAutoRateMode:
+		return m.AutoRateMode()
+	case group.FieldAutoRateValue:
+		return m.AutoRateValue()
 	}
 	return nil, false
 }
@@ -26957,6 +27104,12 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldProfitSafetyBuffer(ctx)
 	case group.FieldCacheHitRateAdjustment:
 		return m.OldCacheHitRateAdjustment(ctx)
+	case group.FieldAutoRateEnabled:
+		return m.OldAutoRateEnabled(ctx)
+	case group.FieldAutoRateMode:
+		return m.OldAutoRateMode(ctx)
+	case group.FieldAutoRateValue:
+		return m.OldAutoRateValue(ctx)
 	}
 	return nil, fmt.Errorf("unknown Group field %s", name)
 }
@@ -27491,6 +27644,27 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetCacheHitRateAdjustment(v)
 		return nil
+	case group.FieldAutoRateEnabled:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAutoRateEnabled(v)
+		return nil
+	case group.FieldAutoRateMode:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAutoRateMode(v)
+		return nil
+	case group.FieldAutoRateValue:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAutoRateValue(v)
+		return nil
 	}
 	return fmt.Errorf("unknown Group field %s", name)
 }
@@ -27595,6 +27769,9 @@ func (m *GroupMutation) AddedFields() []string {
 	if m.addcache_hit_rate_adjustment != nil {
 		fields = append(fields, group.FieldCacheHitRateAdjustment)
 	}
+	if m.addauto_rate_value != nil {
+		fields = append(fields, group.FieldAutoRateValue)
+	}
 	return fields
 }
 
@@ -27667,6 +27844,8 @@ func (m *GroupMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedProfitSafetyBuffer()
 	case group.FieldCacheHitRateAdjustment:
 		return m.AddedCacheHitRateAdjustment()
+	case group.FieldAutoRateValue:
+		return m.AddedAutoRateValue()
 	}
 	return nil, false
 }
@@ -27899,6 +28078,13 @@ func (m *GroupMutation) AddField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.AddCacheHitRateAdjustment(v)
+		return nil
+	case group.FieldAutoRateValue:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddAutoRateValue(v)
 		return nil
 	}
 	return fmt.Errorf("unknown Group numeric field %s", name)
@@ -28310,6 +28496,15 @@ func (m *GroupMutation) ResetField(name string) error {
 		return nil
 	case group.FieldCacheHitRateAdjustment:
 		m.ResetCacheHitRateAdjustment()
+		return nil
+	case group.FieldAutoRateEnabled:
+		m.ResetAutoRateEnabled()
+		return nil
+	case group.FieldAutoRateMode:
+		m.ResetAutoRateMode()
+		return nil
+	case group.FieldAutoRateValue:
+		m.ResetAutoRateValue()
 		return nil
 	}
 	return fmt.Errorf("unknown Group field %s", name)

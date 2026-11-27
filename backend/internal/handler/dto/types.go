@@ -190,6 +190,9 @@ type AdminGroup struct {
 	ProfitMinMargin        float64                       `json:"profit_min_margin"`
 	ProfitSafetyBuffer     float64                       `json:"profit_safety_buffer"`
 	CacheHitRateAdjustment float64                       `json:"cache_hit_rate_adjustment"`
+	AutoRateEnabled        bool                          `json:"auto_rate_enabled"`
+	AutoRateMode           string                        `json:"auto_rate_mode"`
+	AutoRateValue          float64                       `json:"auto_rate_value"`
 	ModelPricing           []service.ChannelModelPricing `json:"model_pricing"`
 
 	// 模型路由配置（仅 anthropic 平台使用）

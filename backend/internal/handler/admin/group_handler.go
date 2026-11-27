@@ -252,6 +252,9 @@ type CreateGroupRequest struct {
 	ProfitMinMargin                 *float64                                   `json:"profit_min_margin"`
 	ProfitSafetyBuffer              *float64                                   `json:"profit_safety_buffer"`
 	CacheHitRateAdjustment          *float64                                   `json:"cache_hit_rate_adjustment"`
+	AutoRateEnabled                 bool                                       `json:"auto_rate_enabled"`
+	AutoRateMode                    string                                     `json:"auto_rate_mode"`
+	AutoRateValue                   *float64                                   `json:"auto_rate_value"`
 	ImagePrice1K                    *float64                                   `json:"image_price_1k"`
 	ImagePrice2K                    *float64                                   `json:"image_price_2k"`
 	ImagePrice4K                    *float64                                   `json:"image_price_4k"`
@@ -336,6 +339,9 @@ type UpdateGroupRequest struct {
 	ProfitMinMargin                 *float64                                   `json:"profit_min_margin"`
 	ProfitSafetyBuffer              *float64                                   `json:"profit_safety_buffer"`
 	CacheHitRateAdjustment          *float64                                   `json:"cache_hit_rate_adjustment"`
+	AutoRateEnabled                 *bool                                      `json:"auto_rate_enabled"`
+	AutoRateMode                    *string                                    `json:"auto_rate_mode"`
+	AutoRateValue                   *float64                                   `json:"auto_rate_value"`
 	ImagePrice1K                    *float64                                   `json:"image_price_1k"`
 	ImagePrice2K                    *float64                                   `json:"image_price_2k"`
 	ImagePrice4K                    *float64                                   `json:"image_price_4k"`
@@ -732,6 +738,17 @@ func (h *GroupHandler) Create(c *gin.Context) {
 			return
 		}
 	}
+	autoRateCfg := service.NormalizeGroupAutoRateConfig(service.GroupAutoRateConfig{
+		Platform:         req.Platform,
+		SubscriptionType: req.SubscriptionType,
+		Enabled:          req.AutoRateEnabled,
+		Mode:             req.AutoRateMode,
+		Value:            float64ValueOrDefault(req.AutoRateValue, 0),
+	})
+	if err := service.ValidateGroupAutoRateConfig(autoRateCfg); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
 
 	group, err := h.adminService.CreateGroup(c.Request.Context(), &service.CreateGroupInput{
 		Name:                            req.Name,
@@ -768,6 +785,9 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		ProfitMinMargin:                 req.ProfitMinMargin,
 		ProfitSafetyBuffer:              req.ProfitSafetyBuffer,
 		CacheHitRateAdjustment:          req.CacheHitRateAdjustment,
+		AutoRateEnabled:                 req.AutoRateEnabled,
+		AutoRateMode:                    req.AutoRateMode,
+		AutoRateValue:                   req.AutoRateValue,
 		ImagePrice1K:                    req.ImagePrice1K,
 		ImagePrice2K:                    req.ImagePrice2K,
 		ImagePrice4K:                    req.ImagePrice4K,
@@ -934,6 +954,9 @@ func (h *GroupHandler) Update(c *gin.Context) {
 		ProfitMinMargin:                 req.ProfitMinMargin,
 		ProfitSafetyBuffer:              req.ProfitSafetyBuffer,
 		CacheHitRateAdjustment:          req.CacheHitRateAdjustment,
+		AutoRateEnabled:                 req.AutoRateEnabled,
+		AutoRateMode:                    req.AutoRateMode,
+		AutoRateValue:                   req.AutoRateValue,
 		ImagePrice1K:                    req.ImagePrice1K,
 		ImagePrice2K:                    req.ImagePrice2K,
 		ImagePrice4K:                    req.ImagePrice4K,
@@ -1247,4 +1270,80 @@ func (h *GroupHandler) UpdateSortOrder(c *gin.Context) {
 	}
 
 	response.Success(c, gin.H{"message": "Sort order updated successfully"})
+}
+
+// GetAutoRatePreview returns the highest eligible account rate and computed auto-rate preview.
+// GET /api/v1/admin/groups/:id/auto-rate-preview
+func (h *GroupHandler) GetAutoRatePreview(c *gin.Context) {
+	if h.rejectUnsupportedSimpleModeOperation(c, "advanced") {
+		return
+	}
+	groupID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || groupID < 0 {
+		response.BadRequest(c, "Invalid group ID")
+		return
+	}
+
+	var modePtr *string
+	if rawMode := strings.TrimSpace(c.Query("mode")); rawMode != "" {
+		modePtr = &rawMode
+	}
+
+	var valuePtr *float64
+	if rawValue := strings.TrimSpace(c.Query("value")); rawValue != "" {
+		parsed, parseErr := strconv.ParseFloat(rawValue, 64)
+		if parseErr != nil {
+			response.BadRequest(c, "Invalid value")
+			return
+		}
+		valuePtr = &parsed
+	}
+
+	var sourceGroupIDPtr *int64
+	if rawSourceID := strings.TrimSpace(c.Query("source_group_id")); rawSourceID != "" {
+		parsed, parseErr := strconv.ParseInt(rawSourceID, 10, 64)
+		if parseErr != nil || parsed <= 0 {
+			response.BadRequest(c, "Invalid source_group_id")
+			return
+		}
+		sourceGroupIDPtr = &parsed
+	}
+
+	var requireOAuthOnlyPtr *bool
+	if rawRequireOAuthOnly := strings.TrimSpace(c.Query("require_oauth_only")); rawRequireOAuthOnly != "" {
+		parsed, parseErr := strconv.ParseBool(rawRequireOAuthOnly)
+		if parseErr != nil {
+			response.BadRequest(c, "Invalid require_oauth_only")
+			return
+		}
+		requireOAuthOnlyPtr = &parsed
+	}
+
+	preview, err := h.adminService.GetGroupAutoRatePreview(c.Request.Context(), groupID, modePtr, valuePtr, sourceGroupIDPtr, requireOAuthOnlyPtr)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, preview)
+}
+
+// RecalculateAutoRate manually recalculates the automatic group rate multiplier.
+// POST /api/v1/admin/groups/:id/recalculate-auto-rate
+func (h *GroupHandler) RecalculateAutoRate(c *gin.Context) {
+	if h.rejectUnsupportedSimpleModeOperation(c, "advanced") {
+		return
+	}
+	groupID, ok := parsePositiveIDParam(c, "id")
+	if !ok {
+		return
+	}
+	group, preview, err := h.adminService.RecalculateGroupAutoRate(c.Request.Context(), groupID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{
+		"group":   dto.GroupFromServiceAdmin(group),
+		"preview": preview,
+	})
 }
